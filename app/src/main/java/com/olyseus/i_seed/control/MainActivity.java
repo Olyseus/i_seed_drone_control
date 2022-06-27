@@ -7,6 +7,7 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 
 import android.os.Bundle;
+import com.google.android.material.button.MaterialButton;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private GoogleMap gMap;
@@ -15,6 +16,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        MaterialButton droneStatus = findViewById(R.id.droneStatus);
+        int buttonColor = android.R.color.holo_red_light;
+        droneStatus.setIconTintResource(buttonColor);
+        droneStatus.setText("offline");
+        droneStatus.setTextColor(getResources().getColor(buttonColor));
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);

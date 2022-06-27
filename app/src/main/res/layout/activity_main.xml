@@ -5,10 +5,27 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
-    <androidx.fragment.app.FragmentContainerView xmlns:map="http://schemas.android.com/apk/res-auto"
-        android:name="com.google.android.gms.maps.SupportMapFragment"
+
+    <androidx.fragment.app.FragmentContainerView
         android:id="@+id/map"
+        android:name="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        tools:layout="@android:layout/activity_list_item" />
+        tools:layout="@android:layout/activity_list_item"
+        tools:layout_editor_absoluteX="-147dp"
+        tools:layout_editor_absoluteY="338dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/droneStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="offline"
+        app:icon="@android:drawable/ic_lock_power_off"
+        app:layout_constraintBottom_toBottomOf="@+id/map"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.1"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.9" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
