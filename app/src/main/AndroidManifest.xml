@@ -41,6 +41,9 @@
         <meta-data
             android:name="com.dji.sdk.API_KEY"
             android:value="2cbd6bb7649aa54ce232277e" />
+        <service android:name="dji.sdk.sdkmanager.DJIGlobalService"
+            tools:ignore="Instantiatable"></service>
+
         <activity
             android:name=".MainActivity"
             android:screenOrientation="landscape"
