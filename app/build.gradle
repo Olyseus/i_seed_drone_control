@@ -7,7 +7,7 @@ android {
 
     defaultConfig {
         applicationId "com.olyseus.i_seed.control"
-        minSdk 19
+        minSdk 21 // DJI SDK 4.16.1 requirement
         targetSdk 32
         versionCode 1
         versionName "1.0"
@@ -60,6 +60,16 @@ android {
 }
 
 dependencies {
+    implementation('com.dji:dji-sdk:4.16.1', {
+        /**
+         * Uncomment the "library-anti-distortion" if your app does not need Anti Distortion for Mavic 2 Pro and Mavic 2 Zoom.
+         * Uncomment the "fly-safe-database" if you need database for release, or we will download it when DJISDKManager.getInstance().registerApp
+         * is called.
+         * Both will greatly reducing the size of the APK.
+         */
+        exclude module: 'library-anti-distortion'
+        //exclude module: 'fly-safe-database'
+    })
 
     implementation 'androidx.appcompat:appcompat:1.4.2'
     implementation 'com.google.android.material:material:1.6.1'
