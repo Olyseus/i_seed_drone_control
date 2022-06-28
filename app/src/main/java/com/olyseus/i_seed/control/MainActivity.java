@@ -20,7 +20,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         MaterialButton droneStatus = findViewById(R.id.droneStatus);
         int buttonColor = android.R.color.holo_red_light;
         droneStatus.setIconTintResource(buttonColor);
-        droneStatus.setText("offline");
+        droneStatus.setText("Offline");
         droneStatus.setTextColor(getResources().getColor(buttonColor));
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
