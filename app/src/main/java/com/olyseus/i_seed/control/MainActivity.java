@@ -34,11 +34,14 @@ import dji.common.camera.LaserError;
 import dji.common.camera.LaserMeasureInformation;
 import dji.common.error.DJIError;
 import dji.common.error.DJISDKError;
+import dji.common.flightcontroller.FlightControllerState;
+import dji.common.flightcontroller.GPSSignalLevel;
 import dji.common.util.CommonCallbacks;
 import dji.sdk.base.BaseComponent;
 import dji.sdk.base.BaseProduct;
 import dji.sdk.camera.Camera;
 import dji.sdk.camera.Lens;
+import dji.sdk.flightcontroller.FlightController;
 import dji.sdk.products.Aircraft;
 import dji.sdk.sdkmanager.DJISDKInitEvent;
 import dji.sdk.sdkmanager.DJISDKManager;
@@ -58,6 +61,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         NOT_REGISTERED,
         REGISTRATION_FAILED,
         NO_PRODUCT,
+        NO_GPS,
         LASER_OFF,
         WAIT_LASER,
         LASER_ERROR,
@@ -135,6 +139,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
+        if (aircraft != null) {
+            FlightController flightController = aircraft.getFlightController();
+            FlightControllerState state = flightController.getState();
+            GPSSignalLevel gpsSignalLevel = state.getGPSSignalLevel();
+            switch (gpsSignalLevel) {
+                case NONE:
+                case LEVEL_0:
+                case LEVEL_1:
+                default:
+                    updateState(State.NO_GPS);
+                    return;
+                case LEVEL_2:
+                case LEVEL_3:
+                case LEVEL_4:
+                case LEVEL_5:
+                    break;
+            }
+        }
+
         if (state.get() == State.LASER_OFF) {
             enableLaser();
             return;
@@ -165,6 +188,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case REGISTRATION_FAILED:
             case NO_PRODUCT:
                 return android.R.color.holo_red_light;
+            case NO_GPS:
             case LASER_OFF:
             case WAIT_LASER:
             case LASER_ERROR:
@@ -189,6 +213,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "Registration failed";
             case NO_PRODUCT:
                 return "No product";
+            case NO_GPS:
+                return "No GPS";
             case LASER_OFF:
                 return "Laser is off";
             case WAIT_LASER:
