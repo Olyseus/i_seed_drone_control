@@ -141,8 +141,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         if (aircraft != null) {
             FlightController flightController = aircraft.getFlightController();
-            FlightControllerState state = flightController.getState();
-            GPSSignalLevel gpsSignalLevel = state.getGPSSignalLevel();
+            FlightControllerState flightState = flightController.getState();
+            GPSSignalLevel gpsSignalLevel = flightState.getGPSSignalLevel();
             switch (gpsSignalLevel) {
                 case NONE:
                 case LEVEL_0:
@@ -154,6 +154,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 case LEVEL_3:
                 case LEVEL_4:
                 case LEVEL_5:
+                    if (state.get() == State.NO_GPS) {
+                        updateState(State.LASER_OFF);
+                    }
                     break;
             }
         }
