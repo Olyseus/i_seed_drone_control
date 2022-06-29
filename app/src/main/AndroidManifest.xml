@@ -26,6 +26,7 @@
     <!-- Mobile SDK requirement permission end -->
 
     <application
+        android:name=".MApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
