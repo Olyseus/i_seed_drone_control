@@ -15,16 +15,34 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
+import android.widget.Button;
 import android.widget.Toast;
 
 import com.google.android.material.button.MaterialButton;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "MainActivity";
     private GoogleMap gMap;
+    private ScheduledExecutorService executorService;
+    private Handler handler;
+
+    enum State {
+        NO_PERMISSIONS,
+        MAP_NOT_READY,
+        NO_PRODUCT,
+        ONLINE
+    }
+
+    private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
+    private AtomicReference<Double> laserDistance = new AtomicReference<Double>(0.0);
 
     private static final String[] REQUIRED_PERMISSION_LIST = new String[]{
             Manifest.permission.BLUETOOTH,
@@ -49,17 +67,90 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        checkAndRequestPermissions();
+        handler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+                updateUIState();
+            }
+        };
 
-        MaterialButton droneStatus = findViewById(R.id.droneStatus);
-        int buttonColor = android.R.color.holo_red_light;
-        droneStatus.setIconTintResource(buttonColor);
-        droneStatus.setText("Offline");
-        droneStatus.setTextColor(getResources().getColor(buttonColor));
+        updateUIState(); // Init
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        checkAndRequestPermissions();
+
+        executorService = Executors.newSingleThreadScheduledExecutor();
+        Runnable pollRunnable = new Runnable() {
+            @Override public void run() { pollJob(); }
+        };
+        executorService.scheduleAtFixedRate(pollRunnable, 0, 1, TimeUnit.SECONDS);
+    }
+
+    private void pollJob() {
+        if (!missingPermission.isEmpty()) {
+            state.set(State.NO_PERMISSIONS);
+            handler.sendEmptyMessage(0);
+            return;
+        }
+
+        if (gMap == null) {
+            state.set(State.MAP_NOT_READY);
+            handler.sendEmptyMessage(0);
+            return;
+        }
+
+        // FIXME
+        state.set(State.ONLINE);
+        handler.sendEmptyMessage(0);
+    }
+
+    private void updateUIState() {
+        MaterialButton droneStatus = findViewById(R.id.droneStatus);
+        int buttonColor = getDroneButtonColor();
+        droneStatus.setIconTintResource(buttonColor);
+        droneStatus.setText(getDroneButtonText());
+        droneStatus.setTextColor(getResources().getColor(buttonColor));
+
+        Button laserStatus = findViewById(R.id.laserStatus);
+        if (state.get() == State.ONLINE) {
+            laserStatus.setText("Laser: " + laserDistance.get());
+        }
+        else {
+            laserStatus.setText("Laser: N/A");
+        }
+    }
+
+    private int getDroneButtonColor() {
+        switch (state.get()) {
+            case NO_PERMISSIONS:
+            case MAP_NOT_READY:
+            case NO_PRODUCT:
+                return android.R.color.holo_red_light;
+            case ONLINE:
+                return android.R.color.holo_green_dark;
+            default:
+                assert(false); // Unreachable
+                return android.R.color.holo_red_light;
+        }
+    }
+
+    private String getDroneButtonText() {
+        switch (state.get()) {
+            case NO_PERMISSIONS:
+                return "No permissions";
+            case MAP_NOT_READY:
+                return "Map not ready";
+            case NO_PRODUCT:
+                return "No product";
+            case ONLINE:
+                return "Online";
+            default:
+                assert(false); // Unreachable
+                return "";
+        }
     }
 
     /**
@@ -77,7 +168,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         if (missingPermission.isEmpty()) {
-            startSDKRegistration();
             return;
         }
 
@@ -106,17 +196,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         }
         // If there is enough permission, we will start the registration
-        if (missingPermission.isEmpty()) {
-            startSDKRegistration();
-            return;
+        if (!missingPermission.isEmpty()) {
+            showToast("Permissions are missing");
         }
-
-        // show at least one missing permission
-        showToast("Permissions are missing");
-    }
-
-    void startSDKRegistration() {
-        // FIXME (implement)
     }
 
     private void showToast(final String toastMsg) {
