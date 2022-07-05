@@ -56,7 +56,9 @@ import interconnection.Interconnection;
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "MainActivity";
     private GoogleMap gMap;
-    private ScheduledExecutorService executorService;
+    private ScheduledExecutorService pollExecutor;
+    private ScheduledExecutorService readPipelineExecutor;
+    private ScheduledExecutorService writePipelineExecutor;
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
     private boolean executionInProgress = false;
@@ -131,7 +133,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         checkAndRequestPermissions();
 
-        executorService = Executors.newSingleThreadScheduledExecutor();
+        pollExecutor = Executors.newSingleThreadScheduledExecutor();
+        readPipelineExecutor = Executors.newSingleThreadScheduledExecutor();
+        writePipelineExecutor = Executors.newSingleThreadScheduledExecutor();
+
         Runnable pollRunnable = new Runnable() {
             @Override public void run() { pollJob(); }
         };
@@ -143,9 +148,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void run() { writePipelineJob(); }
         };
-        executorService.scheduleAtFixedRate(pollRunnable, 0, 1, TimeUnit.SECONDS);
-        executorService.scheduleAtFixedRate(readPipelineRunnable, 0, 1, TimeUnit.SECONDS);
-        executorService.scheduleAtFixedRate(writePipelineRunnable, 0, 1, TimeUnit.SECONDS);
+        pollExecutor.scheduleAtFixedRate(pollRunnable, 0, 200, TimeUnit.MILLISECONDS);
+        readPipelineExecutor.scheduleAtFixedRate(readPipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
+        writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
     }
 
     private void actionButtonClicked() {
