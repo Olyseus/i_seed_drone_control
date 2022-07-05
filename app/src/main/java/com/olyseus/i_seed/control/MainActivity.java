@@ -256,6 +256,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (aircraft == null) {
             return;
         }
+        Log.i(TAG, "Disconnect pipeline");
         FlightController flightController = aircraft.getFlightController();
         flightController.getPipelines().disconnect(channelID, error -> {
             if (error == PipelineError.CLOSED) {
@@ -632,7 +633,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     assert(laserError == LaserError.NORMAL);
                     updateState(State.ONLINE);
                     laserDistance.set(targetDistance);
-                    Log.i(TAG, "Laser info: " + laserMeasureInformation);
+                    Log.d(TAG, "Laser info: " + laserMeasureInformation);
                 }
             });
         }
