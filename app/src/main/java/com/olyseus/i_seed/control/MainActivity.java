@@ -643,7 +643,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         handler.post(new Runnable() {
             @Override
             public void run() {
-                Toast.makeText(getApplicationContext(), toastMsg, Toast.LENGTH_LONG).show();
+                Toast.makeText(getApplicationContext(), toastMsg, Toast.LENGTH_SHORT).show();
             }
         });
     }
