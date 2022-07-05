@@ -18,10 +18,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +39,7 @@ import dji.common.error.DJISDKError;
 import dji.common.flightcontroller.FlightControllerState;
 import dji.common.flightcontroller.GPSSignalLevel;
 import dji.common.util.CommonCallbacks;
+import dji.mop.common.PipelineError;
 import dji.sdk.base.BaseComponent;
 import dji.sdk.base.BaseProduct;
 import dji.sdk.camera.Camera;
@@ -45,6 +48,10 @@ import dji.sdk.flightcontroller.FlightController;
 import dji.sdk.products.Aircraft;
 import dji.sdk.sdkmanager.DJISDKInitEvent;
 import dji.sdk.sdkmanager.DJISDKManager;
+import dji.mop.common.Pipeline;
+import dji.mop.common.TransmissionControlType;
+
+import interconnection.Interconnection;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "MainActivity";
@@ -52,8 +59,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private ScheduledExecutorService executorService;
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
+    private boolean executionInProgress = false;
     private static boolean useBridge = false;
     private Aircraft aircraft = null;
+    private Object mutex = new Object();
+    private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
+    private int commandByteLength = 0;
+    private static int protocolVersion = 2; // Keep it consistent with Onboard SDK
+    private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
 
     enum State {
         NO_PERMISSIONS,
@@ -61,6 +74,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         NOT_REGISTERED,
         REGISTRATION_FAILED,
         NO_PRODUCT,
+        CONNECTING,
+        INTERCONNECTION_ERROR,
         NO_GPS,
         LASER_OFF,
         WAIT_LASER,
@@ -93,6 +108,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Button actionButton = (Button) findViewById(R.id.actionButton);
+        actionButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                actionButtonClicked();
+            }
+        });
 
         handler = new Handler() {
             @Override
@@ -113,7 +135,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Runnable pollRunnable = new Runnable() {
             @Override public void run() { pollJob(); }
         };
+        Runnable readPipelineRunnable = new Runnable() {
+            @Override
+            public void run() { readPipelineJob(); }
+        };
+        Runnable writePipelineRunnable = new Runnable() {
+            @Override
+            public void run() { writePipelineJob(); }
+        };
         executorService.scheduleAtFixedRate(pollRunnable, 0, 1, TimeUnit.SECONDS);
+        executorService.scheduleAtFixedRate(readPipelineRunnable, 0, 1, TimeUnit.SECONDS);
+        executorService.scheduleAtFixedRate(writePipelineRunnable, 0, 1, TimeUnit.SECONDS);
+    }
+
+    private void actionButtonClicked() {
+        synchronized (mutex) {
+            // FIXME (implement)
+            executeCommands.add(Interconnection.command_type.command_t.PING);
+        }
+    }
+
+    private void sleep(int seconds) {
+        try {
+            TimeUnit.SECONDS.sleep(seconds);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     private void updateState(State newState) {
@@ -139,32 +186,210 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (aircraft != null) {
-            FlightController flightController = aircraft.getFlightController();
-            FlightControllerState flightState = flightController.getState();
-            GPSSignalLevel gpsSignalLevel = flightState.getGPSSignalLevel();
-            switch (gpsSignalLevel) {
-                case NONE:
-                case LEVEL_0:
-                case LEVEL_1:
-                default:
-                    updateState(State.NO_GPS);
-                    return;
-                case LEVEL_2:
-                case LEVEL_3:
-                case LEVEL_4:
-                case LEVEL_5:
-                    if (state.get() == State.NO_GPS) {
-                        updateState(State.LASER_OFF);
-                    }
-                    break;
+        if (aircraft == null) {
+            return;
+        }
+
+        FlightController flightController = aircraft.getFlightController();
+
+        if (pipeline() == null) {
+            if (state.get() == State.CONNECTING) {
+                return;
             }
+            updateState(State.CONNECTING);
+
+            flightController.getPipelines().connect(channelID, TransmissionControlType.STABLE, error -> {
+                if (error == null) {
+                    assert(pipeline() != null);
+                    updateState(State.NO_GPS);
+                }
+                else {
+                    if (error == PipelineError.NOT_READY) {
+                        Log.e(TAG, "Interconnection failed, sleep 5 seconds");
+                        sleep(5);
+                    } else if (error == PipelineError.CONNECTION_REFUSED) {
+                        Log.e(TAG, "Onboard not started, sleep 5 seconds");
+                        showToast("No onboard connection");
+                        sleep(5);
+                    }
+                    else {
+                        Log.e(TAG, "Interconnection error: " + error.toString());
+                    }
+                    assert(pipeline() == null);
+                    updateState(State.INTERCONNECTION_ERROR);
+                }
+            });
+            return;
+        }
+
+        FlightControllerState flightState = flightController.getState();
+        GPSSignalLevel gpsSignalLevel = flightState.getGPSSignalLevel();
+        switch (gpsSignalLevel) {
+            case NONE:
+            case LEVEL_0:
+            case LEVEL_1:
+            default:
+                updateState(State.NO_GPS);
+                return;
+            case LEVEL_2:
+            case LEVEL_3:
+            case LEVEL_4:
+            case LEVEL_5:
+                if (state.get() == State.NO_GPS) {
+                    updateState(State.LASER_OFF);
+                }
+                break;
         }
 
         if (state.get() == State.LASER_OFF) {
             enableLaser();
             return;
         }
+    }
+
+    private void reconnect() {
+        if (aircraft == null) {
+            return;
+        }
+        FlightController flightController = aircraft.getFlightController();
+        flightController.getPipelines().disconnect(channelID, error -> {
+            if (error == PipelineError.CLOSED) {
+                // already closed
+            } else if (error != null) {
+                Log.e(TAG, "Disconnect error: " + error.toString());
+            }
+        });
+    }
+
+    private Pipeline pipeline() {
+        if (aircraft == null) {
+            return null;
+        }
+
+        FlightController flightController = aircraft.getFlightController();
+        return flightController.getPipelines().getPipeline(channelID);
+    }
+
+    private void readPipelineJob() {
+        if (pipeline() == null) {
+            return;
+        }
+
+        if (commandByteLength == 0) {
+            Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
+            builder.setVersion(protocolVersion);
+            builder.setType(Interconnection.command_type.command_t.PING);
+            commandByteLength = builder.build().toByteArray().length;
+            assert (commandByteLength > 0);
+        }
+
+        byte[] buffer = new byte[commandByteLength];
+        int readResult = pipeline().readData(buffer, 0, buffer.length);
+        if (readResult == -10008) {
+            // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
+            return;
+        }
+        if (readResult == -10011) {
+            // Connection closed:
+            // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
+            reconnect();
+            return;
+        }
+        if (readResult <= 0) {
+            Log.e(TAG, "Read pipeline error: " + readResult);
+            return;
+        }
+
+        assert(readResult == buffer.length);
+        try {
+            Interconnection.command_type command = Interconnection.command_type.parseFrom(buffer);
+            if (command.getVersion() != protocolVersion) {
+                if (command.getVersion() > protocolVersion) {
+                    showToast("Mismatch: upgrade Android");
+                }
+                else {
+                    showToast("Mismatch: upgrade Onboard");
+                }
+                return;
+            }
+            switch (command.getType()) {
+                case PING:
+                    Log.i(TAG, "PING received");
+                    break;
+                default:
+                    assert(false);
+            }
+        } catch (InvalidProtocolBufferException e) {
+            e.printStackTrace();
+            Log.e(TAG, "Pipeline parse failed, invalid protocol");
+        }
+    }
+
+    private void writePipelineJob() {
+        if (pipeline() == null) {
+            synchronized (mutex) {
+                if (executeCommands.size() > 0) {
+                    Log.w(TAG, "Number of commands in queue: " + executeCommands.size());
+                }
+            }
+            return;
+        }
+        if (executionInProgress) {
+            return;
+        }
+        executionInProgress = true;
+
+        while (true) {
+            Interconnection.command_type.command_t executeCommand = null;
+            synchronized (mutex) {
+                if (executeCommands.isEmpty()) {
+                    break;
+                }
+                executeCommand = executeCommands.get(0);
+            }
+            if (executeCommand(executeCommand)) {
+                synchronized (mutex) {
+                    executeCommands.remove(0);
+                }
+            }
+            else {
+                break;
+            }
+        }
+
+        executionInProgress = false;
+    }
+
+    private boolean executeCommand(Interconnection.command_type.command_t command) {
+        switch (command) {
+            case PING:
+                Log.i(TAG, "Execute command PING");
+                Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
+                builder.setVersion(protocolVersion);
+                builder.setType(Interconnection.command_type.command_t.PING);
+                byte[] bytesToSend = builder.build().toByteArray();
+                int writeResult = pipeline().writeData(bytesToSend, 0, bytesToSend.length);
+                if (writeResult == -10008) {
+                    // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
+                    Log.e(TAG, "Write failed, timeout");
+                    return false;
+                }
+                if (writeResult == -10011) {
+                    // Connection closed: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
+                    Log.e(TAG, "Write failed, connection closed");
+                    reconnect();
+                    return false;
+                }
+                if (writeResult > 0) {
+                    assert(writeResult == bytesToSend.length);
+                    return true;
+                }
+                Log.e(TAG, "Write pipeline error: " + writeResult);
+                return false;
+            default:
+                assert(false);
+        }
+        return true;
     }
 
     private void updateUIState() {
@@ -191,6 +416,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case REGISTRATION_FAILED:
             case NO_PRODUCT:
                 return android.R.color.holo_red_light;
+            case CONNECTING:
+            case INTERCONNECTION_ERROR:
             case NO_GPS:
             case LASER_OFF:
             case WAIT_LASER:
@@ -216,6 +443,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "Registration failed";
             case NO_PRODUCT:
                 return "No product";
+            case CONNECTING:
+                return "Connecting";
+            case INTERCONNECTION_ERROR:
+                return "Interconnection error";
             case NO_GPS:
                 return "No GPS";
             case LASER_OFF:
