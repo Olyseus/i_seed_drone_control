@@ -553,7 +553,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     @Override
                     public void onProductChanged(BaseProduct baseProduct) {
-                        assert(false);
+                        assert (baseProduct instanceof Aircraft);
+                        Aircraft newAircraft = (Aircraft) baseProduct;
+                        if (aircraft != null) {
+                            assert(aircraft == newAircraft);
+                        }
+                        aircraft = newAircraft;
+                        assert (aircraft != null);
+                        updateState(State.LASER_OFF);
                     }
 
                     @Override
