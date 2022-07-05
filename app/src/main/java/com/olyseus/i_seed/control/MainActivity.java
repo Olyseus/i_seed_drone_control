@@ -216,12 +216,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         Log.e(TAG, "Onboard not started, sleep 5 seconds");
                         showToast("No onboard connection");
                         sleep(5);
-                    }
-                    else {
+                    } else if (error == PipelineError.INVALID_PARAMETERS) {
+                        // Can be received when Onboard SDK stopped and started again
+                    } else if (error == PipelineError.TIMEOUT) {
+                        Log.e(TAG, "Interconnection failed by timeout, sleep 5 seconds");
+                        sleep(5);
+                    } else {
                         Log.e(TAG, "Interconnection error: " + error.toString());
                     }
-                    assert(pipeline() == null);
-                    updateState(State.INTERCONNECTION_ERROR);
+                    // Can return non-null even if on error code. Happens on Onboard SDK restart (auto-reconnect?)
+                    updateState(pipeline() == null ? State.INTERCONNECTION_ERROR : State.NO_GPS);
                 }
             });
             return;
