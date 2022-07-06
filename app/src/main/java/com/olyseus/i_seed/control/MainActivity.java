@@ -62,7 +62,7 @@ import dji.mop.common.TransmissionControlType;
 
 import interconnection.Interconnection;
 
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapClickListener {
     private static final String TAG = "MainActivity";
     private GoogleMap gMap;
     private ScheduledExecutorService pollExecutor;
@@ -177,6 +177,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void homeButtonClicked() {
         zoomToDrone();
+    }
+
+    @Override
+    public void onMapClick(LatLng point) {
     }
 
     private void sleep(int seconds) {
@@ -707,7 +711,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(GoogleMap googleMap) {
         if (gMap == null) {
-            gMap = googleMap; // FIXME (use)
+            gMap = googleMap;
+            gMap.setOnMapClickListener(this);
         }
     }
 }
