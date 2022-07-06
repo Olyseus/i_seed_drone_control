@@ -699,6 +699,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap));
         markerOptions.position(pos);
         markerOptions.rotation(heading);
+        markerOptions.anchor(0.5F, 0.5F);
         droneMarker = gMap.addMarker(markerOptions);
         zoomToDrone();
     }
