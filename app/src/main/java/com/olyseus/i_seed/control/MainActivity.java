@@ -24,6 +24,7 @@ import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
@@ -122,9 +123,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Button actionButton = (Button) findViewById(R.id.actionButton);
         actionButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) {
-                actionButtonClicked();
-            }
+            public void onClick(View v) { actionButtonClicked(); }
+        });
+        ImageButton homeButton = (ImageButton) findViewById(R.id.homeButton);
+        homeButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { homeButtonClicked(); }
         });
 
         handler = new Handler() {
@@ -169,6 +173,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         updateDroneCoordinates(48.858457, 2.2943995, 45.0F); // FIXME (remove)
+    }
+
+    private void homeButtonClicked() {
+        zoomToDrone();
     }
 
     private void sleep(int seconds) {
@@ -665,6 +673,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void zoomToDrone() {
+        if (gMap == null) {
+            return;
+        }
+        if (droneMarker == null) {
+            return;
+        }
         float zoomLevel = 18.0F;
         CameraUpdate cu = CameraUpdateFactory.newLatLngZoom(droneMarker.getPosition(), zoomLevel);
         gMap.animateCamera(cu);
