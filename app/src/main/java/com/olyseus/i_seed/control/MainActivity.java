@@ -105,8 +105,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         ONLINE
     }
 
+    enum Mission {
+        STOPPED,
+        IN_PROGRESS,
+        PAUSED
+    }
+
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
     private AtomicReference<Float> laserDistance = new AtomicReference<Float>(0.0F);
+    private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
 
     private static final String[] REQUIRED_PERMISSION_LIST = new String[]{
             Manifest.permission.BLUETOOTH,
@@ -139,6 +146,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         homeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { homeButtonClicked(); }
+        });
+        ImageButton cancelButton = findViewById(R.id.cancelButton);
+        cancelButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { cancelButtonClicked(); }
         });
 
         handler = new Handler() {
@@ -176,7 +188,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
     }
 
+    private void setMissionStatus(Mission newMissionStatus) {
+        // FIXME (send command to Onboard SDK)
+        mission_status.set(newMissionStatus);
+        updateUIState();
+    }
+
     private void actionButtonClicked() {
+        if (mission_status.get() == Mission.PAUSED) {
+            setMissionStatus(Mission.IN_PROGRESS);
+            return;
+        }
+        if (mission_status.get() == Mission.IN_PROGRESS) {
+            setMissionStatus(Mission.PAUSED);
+            return;
+        }
         if (state.get() != State.ONLINE) {
             new MaterialAlertDialogBuilder(this).setMessage("The drone is not online").setPositiveButton("Ok", null).show();
             return;
@@ -195,11 +221,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        Log.i(TAG, "Start mission");
-                        synchronized (mutex) {
-                            // FIXME (implement)
-                            executeCommands.add(Interconnection.command_type.command_t.PING);
-                        }
+                        setMissionStatus(Mission.IN_PROGRESS);
                     }
                 })
                 .setNegativeButton("No", null)
@@ -210,8 +232,43 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         zoomToDrone();
     }
 
+    private void cancelButtonClicked() {
+        if (mission_status.get() != Mission.STOPPED) {
+            new MaterialAlertDialogBuilder(this)
+                    .setMessage("Are you sure you want to abort this mission?")
+                    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            setMissionStatus(Mission.STOPPED);
+                        }
+                    })
+                    .setNegativeButton("No", null)
+                    .show();
+            return;
+        }
+
+        assert(pinPoint != null);
+        new MaterialAlertDialogBuilder(this)
+                .setMessage("Are you sure you want to remove the pin?")
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        pinPoint.remove();
+                        tripLine.remove();
+                        pinPoint = null;
+                        tripLine = null;
+                        updateUIState();
+                    }
+                })
+                .setNegativeButton("No", null)
+                .show();
+    }
+
     @Override
     public void onMapClick(LatLng point) {
+        if (mission_status.get() != Mission.STOPPED) {
+            return;
+        }
         if (pinPoint == null) {
             MarkerOptions markerOptions = new MarkerOptions();
             markerOptions.position(point);
@@ -221,6 +278,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             PatternItem DASH = new Dash(20);
             PatternItem GAP = new Gap(20);
             tripLine.setPattern(Arrays.asList(DASH, GAP));
+            updateUIState();
             return;
         }
 
@@ -231,6 +289,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onClick(DialogInterface dialog, int which) {
                         pinPoint.setPosition(point);
                         tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+                        updateUIState();
                     }
                 })
                 .setNegativeButton("No", null)
@@ -492,6 +551,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         else {
             laserStatus.setText("Laser: N/A");
+        }
+
+        ImageButton cancelButton = findViewById(R.id.cancelButton);
+        if ((mission_status.get() != Mission.STOPPED) || (pinPoint != null)) {
+            cancelButton.setVisibility(View.VISIBLE);
+        } else {
+            cancelButton.setVisibility(View.GONE);
+        }
+
+        Button actionButton = (Button) findViewById(R.id.actionButton);
+        switch (mission_status.get()) {
+            case STOPPED:
+                actionButton.setText("Start");
+                break;
+            case PAUSED:
+                actionButton.setText("Continue");
+                break;
+            case IN_PROGRESS:
+                actionButton.setText("Pause");
+                break;
+            default:
+                assert(false);
         }
     }
 
