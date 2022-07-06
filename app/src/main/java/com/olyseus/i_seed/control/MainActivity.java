@@ -12,6 +12,7 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 
 import android.Manifest;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -37,6 +38,7 @@ import com.google.android.gms.maps.model.PatternItem;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.util.ArrayList;
@@ -175,12 +177,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void actionButtonClicked() {
-        synchronized (mutex) {
-            // FIXME (implement)
-            executeCommands.add(Interconnection.command_type.command_t.PING);
+        if (state.get() != State.ONLINE) {
+            new MaterialAlertDialogBuilder(this).setMessage("The drone is not online").setPositiveButton("Ok", null).show();
+            return;
+        }
+        if (gMap == null) {
+            new MaterialAlertDialogBuilder(this).setMessage("The map is not ready yet").setPositiveButton("Ok", null).show();
+            return;
+        }
+        if (pinPoint == null) {
+            new MaterialAlertDialogBuilder(this).setMessage("Please drop a pin to start").setPositiveButton("Ok", null).show();
+            return;
         }
 
-        updateDroneCoordinates(48.858457, 2.2943995, 45.0F); // FIXME (remove)
+        new MaterialAlertDialogBuilder(this)
+                .setMessage("Are you sure you want to start this mission?")
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        Log.i(TAG, "Start mission");
+                        synchronized (mutex) {
+                            // FIXME (implement)
+                            executeCommands.add(Interconnection.command_type.command_t.PING);
+                        }
+                    }
+                })
+                .setNegativeButton("No", null)
+                .show();
     }
 
     private void homeButtonClicked() {
@@ -200,8 +223,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             tripLine.setPattern(Arrays.asList(DASH, GAP));
             return;
         }
-        pinPoint.setPosition(point);
-        tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+
+        new MaterialAlertDialogBuilder(this)
+                .setMessage("Are you sure you want to remove the old pin?")
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        pinPoint.setPosition(point);
+                        tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+                    }
+                })
+                .setNegativeButton("No", null)
+                .show();
     }
 
     private void sleep(int seconds) {
@@ -734,6 +767,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (gMap == null) {
             gMap = googleMap;
             gMap.setOnMapClickListener(this);
+            updateDroneCoordinates(48.858457, 2.2943995, 45.0F); // FIXME (remove)
         }
     }
 }
