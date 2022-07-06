@@ -28,13 +28,19 @@ import android.widget.ImageButton;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.Dash;
+import com.google.android.gms.maps.model.Gap;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.PatternItem;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.material.button.MaterialButton;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -74,6 +80,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static boolean useBridge = false;
     private Aircraft aircraft = null;
     Marker droneMarker = null;
+    Marker pinPoint = null;
+    Polyline tripLine = null;
     private Object mutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int commandByteLength = 0;
@@ -181,6 +189,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     public void onMapClick(LatLng point) {
+        if (pinPoint == null) {
+            MarkerOptions markerOptions = new MarkerOptions();
+            markerOptions.position(point);
+            markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+            pinPoint = gMap.addMarker(markerOptions);
+            tripLine = gMap.addPolyline(new PolylineOptions().add(droneMarker.getPosition(), pinPoint.getPosition()));
+            PatternItem DASH = new Dash(20);
+            PatternItem GAP = new Gap(20);
+            tripLine.setPattern(Arrays.asList(DASH, GAP));
+            return;
+        }
+        pinPoint.setPosition(point);
+        tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
     }
 
     private void sleep(int seconds) {
