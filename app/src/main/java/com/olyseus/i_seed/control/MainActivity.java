@@ -5,12 +5,16 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,6 +26,10 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.material.button.MaterialButton;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -64,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean executionInProgress = false;
     private static boolean useBridge = false;
     private Aircraft aircraft = null;
+    Marker droneMarker = null;
     private Object mutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int commandByteLength = 0;
@@ -158,6 +167,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             // FIXME (implement)
             executeCommands.add(Interconnection.command_type.command_t.PING);
         }
+
+        updateDroneCoordinates(48.858457, 2.2943995, 45.0F); // FIXME (remove)
     }
 
     private void sleep(int seconds) {
@@ -651,6 +662,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Toast.makeText(getApplicationContext(), toastMsg, Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private void zoomToDrone() {
+        float zoomLevel = 18.0F;
+        CameraUpdate cu = CameraUpdateFactory.newLatLngZoom(droneMarker.getPosition(), zoomLevel);
+        gMap.animateCamera(cu);
+    }
+
+    private void updateDroneCoordinates(double latitude, double longitude, float heading) {
+        LatLng pos = new LatLng(latitude, longitude);
+
+        if (droneMarker != null) {
+            droneMarker.setPosition(pos);
+            droneMarker.setRotation(heading);
+            return;
+        }
+
+        MarkerOptions markerOptions = new MarkerOptions();
+        Bitmap bitmap = BitmapFactory.decodeResource(getResources(), dji.midware.R.drawable.indoorpointing_canpass);
+        Bitmap resizedBitmap = Bitmap.createScaledBitmap(bitmap, 120, 120, false);
+        markerOptions.icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap));
+        markerOptions.position(pos);
+        markerOptions.rotation(heading);
+        droneMarker = gMap.addMarker(markerOptions);
+        zoomToDrone();
     }
 
     @Override
