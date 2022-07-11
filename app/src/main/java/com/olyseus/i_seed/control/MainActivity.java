@@ -57,6 +57,7 @@ import dji.common.flightcontroller.FlightControllerState;
 import dji.common.flightcontroller.GPSSignalLevel;
 import dji.common.util.CommonCallbacks;
 import dji.mop.common.PipelineError;
+import dji.mop.common.Pipelines;
 import dji.sdk.base.BaseComponent;
 import dji.sdk.base.BaseProduct;
 import dji.sdk.camera.Camera;
@@ -117,6 +118,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
+    private AtomicReference<LaserError> laserError = new AtomicReference<LaserError>(LaserError.NO_SIGNAL);
     private AtomicReference<Float> laserDistance = new AtomicReference<Float>(0.0F);
     private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
 
@@ -630,7 +632,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         Button laserStatus = findViewById(R.id.laserStatus);
         if (state.get() == State.ONLINE) {
-            laserStatus.setText("Laser: " + String.format("%.1f", laserDistance.get()));
+            String msg = "";
+            switch (laserError.get()) {
+                case TOO_CLOSE:
+                    msg = "too close";
+                    break;
+                case TOO_FAR:
+                    msg = "too far";
+                    break;
+                case NORMAL:
+                    msg = String.format("%.1f", laserDistance.get());
+                    break;
+                default:
+                    assert(false);
+            }
+            laserStatus.setText("Laser: " + msg);
         }
         else {
             laserStatus.setText("Laser: N/A");
@@ -856,28 +872,29 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onUpdate(LaserMeasureInformation laserMeasureInformation) {
                     float targetDistance = laserMeasureInformation.getTargetDistance();
-                    LaserError laserError = laserMeasureInformation.getLaserError();
-                    if (laserError == LaserError.TOO_FAR) {
-                        Log.e(TAG, "Laser is too far");
-                        updateState(State.LASER_ERROR);
+                    LaserError error = laserMeasureInformation.getLaserError();
+                    if (error == LaserError.TOO_FAR) {
+                        laserError.set(LaserError.TOO_FAR);
+                        updateState(State.ONLINE);
                         return;
                     }
-                    if (laserError == LaserError.TOO_CLOSE) {
-                        Log.e(TAG, "Laser is too close");
-                        updateState(State.LASER_ERROR);
+                    if (error == LaserError.TOO_CLOSE) {
+                        laserError.set(LaserError.TOO_CLOSE);
+                        updateState(State.ONLINE);
                         return;
                     }
-                    if (laserError == LaserError.NO_SIGNAL) {
+                    if (error == LaserError.NO_SIGNAL) {
                         Log.e(TAG, "Laser no signal");
                         updateState(State.LASER_ERROR);
                         return;
                     }
-                    if (laserError == LaserError.UNKNOWN) {
+                    if (error == LaserError.UNKNOWN) {
                         Log.e(TAG, "Laser state is unknown");
                         updateState(State.LASER_ERROR);
                         return;
                     }
-                    assert(laserError == LaserError.NORMAL);
+                    assert(error == LaserError.NORMAL);
+                    laserError.set(LaserError.NORMAL);
                     updateState(State.ONLINE);
                     laserDistance.set(targetDistance);
                     Log.d(TAG, "Laser info: " + laserMeasureInformation);
