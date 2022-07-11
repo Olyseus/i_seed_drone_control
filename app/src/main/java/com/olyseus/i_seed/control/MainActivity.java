@@ -454,7 +454,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         FlightController flightController = aircraft.getFlightController();
-        return flightController.getPipelines().getPipeline(channelID);
+        Pipelines pipelines = flightController.getPipelines();
+        if (pipelines == null) {
+            return null;
+        }
+        return pipelines.getPipeline(channelID);
     }
 
     // read pipe thread
