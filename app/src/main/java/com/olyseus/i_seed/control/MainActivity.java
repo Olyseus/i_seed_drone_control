@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object mutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int commandByteLength = 0;
-    private static int protocolVersion = 2; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 3; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
 
     enum State {
