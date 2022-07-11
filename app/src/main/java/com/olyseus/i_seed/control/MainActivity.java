@@ -302,6 +302,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // UI thread
     @Override
     public void onMapClick(LatLng point) {
+        if (droneMarker == null) {
+            return;
+        }
         if (mission_status.get() != Mission.STOPPED) {
             return;
         }
