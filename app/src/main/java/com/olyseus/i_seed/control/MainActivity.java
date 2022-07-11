@@ -87,8 +87,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object mutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int commandByteLength = 0;
+    private int droneCoordinatesByteLength = 0;
     private static int protocolVersion = 3; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
+    private Object droneCoordinatesMutex = new Object();
+    private double droneLongitude = 0.0;
+    private double droneLatitude = 0.0;
+    private float droneHeading = 0.0F;
 
     enum State {
         NO_PERMISSIONS,
@@ -191,7 +196,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void setMissionStatus(Mission newMissionStatus) {
         // FIXME (send command to Onboard SDK)
         mission_status.set(newMissionStatus);
-        updateUIState();
+        handler.sendEmptyMessage(0);
     }
 
     private void actionButtonClicked() {
@@ -232,6 +237,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         zoomToDrone();
     }
 
+    // UI thread
     private void cancelButtonClicked() {
         if (mission_status.get() != Mission.STOPPED) {
             new MaterialAlertDialogBuilder(this)
@@ -264,6 +270,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .show();
     }
 
+    // UI thread
     @Override
     public void onMapClick(LatLng point) {
         if (mission_status.get() != Mission.STOPPED) {
@@ -392,6 +399,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    // read pipe thread
+    // write pipe thread
     private void reconnect() {
         if (aircraft == null) {
             return;
@@ -416,6 +425,30 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return flightController.getPipelines().getPipeline(channelID);
     }
 
+    // read pipe thread
+    private byte[] readPipeData(int length) {
+        byte[] buffer = new byte[length];
+        int readResult = pipeline().readData(buffer, 0, buffer.length);
+        if (readResult == -10008) {
+            // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
+            return null;
+        }
+        if (readResult == -10011) {
+            // Connection closed:
+            // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
+            reconnect();
+            return null;
+        }
+        if (readResult <= 0) {
+            Log.e(TAG, "Read pipeline error: " + readResult);
+            return null;
+        }
+
+        assert(readResult == buffer.length);
+        return buffer;
+    }
+
+    // read pipe thread
     private void readPipelineJob() {
         if (pipeline() == null) {
             return;
@@ -429,24 +462,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             assert (commandByteLength > 0);
         }
 
-        byte[] buffer = new byte[commandByteLength];
-        int readResult = pipeline().readData(buffer, 0, buffer.length);
-        if (readResult == -10008) {
-            // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
-            return;
+        if (droneCoordinatesByteLength == 0) {
+            Interconnection.drone_coordinates.Builder builder = Interconnection.drone_coordinates.newBuilder();
+            builder.setLatitude(0.0);
+            builder.setLongitude(0.0);
+            builder.setHeading(0.0F);
+            droneCoordinatesByteLength = builder.build().toByteArray().length;
+            assert (droneCoordinatesByteLength > 0);
         }
-        if (readResult == -10011) {
-            // Connection closed:
-            // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
-            reconnect();
-            return;
-        }
-        if (readResult <= 0) {
-            Log.e(TAG, "Read pipeline error: " + readResult);
+
+        byte[] buffer = readPipeData(commandByteLength);
+        if (buffer == null) {
             return;
         }
 
-        assert(readResult == buffer.length);
         try {
             Interconnection.command_type command = Interconnection.command_type.parseFrom(buffer);
             if (command.getVersion() != protocolVersion) {
@@ -462,6 +491,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 case PING:
                     Log.i(TAG, "PING received");
                     break;
+                case DRONE_COORDINATES:
+                    byte[] crdBuffer = readPipeData(droneCoordinatesByteLength);
+                    if (crdBuffer == null) {
+                        return;
+                    }
+                    Interconnection.drone_coordinates coordinates = Interconnection.drone_coordinates.parseFrom(crdBuffer);
+                    synchronized (droneCoordinatesMutex) {
+                        droneLatitude = coordinates.getLatitude();
+                        droneLongitude = coordinates.getLongitude();
+                        droneHeading = coordinates.getHeading();
+                    }
+                    break;
                 default:
                     assert(false);
             }
@@ -471,6 +512,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    // write pipe thread
     private void writePipelineJob() {
         if (pipeline() == null) {
             synchronized (mutex) {
@@ -506,6 +548,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         executionInProgress = false;
     }
 
+    // write pipe thread
     private boolean executeCommand(Interconnection.command_type.command_t command) {
         switch (command) {
             case PING:
@@ -538,6 +581,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return true;
     }
 
+    // UI thread
     private void updateUIState() {
         MaterialButton droneStatus = findViewById(R.id.droneStatus);
         int buttonColor = getDroneButtonColor();
@@ -574,6 +618,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             default:
                 assert(false);
         }
+
+        updateDroneCoordinates();
     }
 
     private int getDroneButtonColor() {
@@ -823,7 +869,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         gMap.animateCamera(cu);
     }
 
-    private void updateDroneCoordinates(double latitude, double longitude, float heading) {
+    // UI thread
+    private void updateDroneCoordinates() {
+        if (gMap == null) {
+            return;
+        }
+
+        double latitude = 0.0;
+        double longitude = 0.0;
+        float heading = 0.0F;
+
+        synchronized (droneCoordinatesMutex) {
+            latitude = droneLatitude;
+            longitude = droneLongitude;
+            heading = droneHeading;
+        }
+
+        if (latitude == 0.0 && longitude == 0.0 && heading == 0.0) {
+            return;
+        }
+
         LatLng pos = new LatLng(latitude, longitude);
 
         if (droneMarker != null) {
@@ -848,7 +913,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (gMap == null) {
             gMap = googleMap;
             gMap.setOnMapClickListener(this);
-            updateDroneCoordinates(48.858457, 2.2943995, 45.0F); // FIXME (remove)
         }
     }
 }
