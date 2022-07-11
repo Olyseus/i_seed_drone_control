@@ -193,19 +193,48 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
     }
 
-    private void setMissionStatus(Mission newMissionStatus) {
-        // FIXME (send command to Onboard SDK)
+    // UI thread
+    // read pipe thread
+    private void setMissionStatus(Mission newMissionStatus, boolean fromDrone) {
+        switch (newMissionStatus) {
+            case STOPPED:
+                assert(mission_status.get() != Mission.STOPPED);
+                if (fromDrone) {
+                    // Mission finished
+                } else {
+                    // Aborting mission
+                    synchronized (mutex) {
+                        executeCommands.add(Interconnection.command_type.command_t.MISSION_ABORT);
+                    }
+                }
+                break;
+            case IN_PROGRESS:
+                assert(mission_status.get() != Mission.IN_PROGRESS);
+                assert(!fromDrone);
+                synchronized (mutex) {
+                    executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
+                }
+                break;
+            case PAUSED:
+                assert(mission_status.get() == Mission.IN_PROGRESS);
+                assert(!fromDrone);
+                synchronized (mutex) {
+                    executeCommands.add(Interconnection.command_type.command_t.MISSION_PAUSE);
+                }
+                break;
+        }
         mission_status.set(newMissionStatus);
         handler.sendEmptyMessage(0);
     }
 
+    // UI thread
     private void actionButtonClicked() {
         if (mission_status.get() == Mission.PAUSED) {
-            setMissionStatus(Mission.IN_PROGRESS);
+            setMissionStatus(Mission.IN_PROGRESS, false);
             return;
         }
         if (mission_status.get() == Mission.IN_PROGRESS) {
-            setMissionStatus(Mission.PAUSED);
+            setMissionStatus(Mission.PAUSED, false);
             return;
         }
         if (state.get() != State.ONLINE) {
@@ -226,7 +255,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        setMissionStatus(Mission.IN_PROGRESS);
+                        setMissionStatus(Mission.IN_PROGRESS, false);
                     }
                 })
                 .setNegativeButton("No", null)
@@ -245,7 +274,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            setMissionStatus(Mission.STOPPED);
+                            setMissionStatus(Mission.STOPPED, false);
                         }
                     })
                     .setNegativeButton("No", null)
@@ -502,6 +531,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         droneLongitude = coordinates.getLongitude();
                         droneHeading = coordinates.getHeading();
                     }
+                    break;
+                case MISSION_FINISHED:
+                    setMissionStatus(Mission.STOPPED, true);
                     break;
                 default:
                     assert(false);
