@@ -193,15 +193,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         writePipelineExecutor = Executors.newSingleThreadScheduledExecutor();
 
         Runnable pollRunnable = new Runnable() {
-            @Override public void run() { pollJob(); }
+            @Override public void run() {
+              try {
+                pollJob();
+              }
+              catch (Exception e) {
+                e.printStackTrace();
+                Log.e(TAG, "pollJob exception: " + e);
+              }
+            }
         };
         Runnable readPipelineRunnable = new Runnable() {
             @Override
-            public void run() { readPipelineJob(); }
+            public void run() {
+              try {
+                readPipelineJob();
+              }
+              catch (Exception e) {
+                e.printStackTrace();
+                Log.e(TAG, "readPipelineJob exception: " + e);
+              }
+            }
         };
         Runnable writePipelineRunnable = new Runnable() {
             @Override
-            public void run() { writePipelineJob(); }
+            public void run() {
+              try {
+                writePipelineJob();
+              }
+              catch (Exception e) {
+                e.printStackTrace();
+                Log.e(TAG, "writePipelineJob exception: " + e);
+              }
+            }
         };
         pollExecutor.scheduleAtFixedRate(pollRunnable, 0, 200, TimeUnit.MILLISECONDS);
         readPipelineExecutor.scheduleAtFixedRate(readPipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
