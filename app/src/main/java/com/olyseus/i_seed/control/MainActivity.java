@@ -411,13 +411,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         FlightController flightController = aircraft.getFlightController();
 
+        if (flightController == null) {
+          return;
+        }
+
         if (pipeline() == null) {
             if (state.get() == State.CONNECTING) {
                 return;
             }
             updateState(State.CONNECTING);
 
-            flightController.getPipelines().connect(channelID, TransmissionControlType.STABLE, error -> {
+            Pipelines pipelines = flightController.getPipelines();
+            if (pipelines == null) {
+              return;
+            }
+            pipelines.connect(channelID, TransmissionControlType.STABLE, error -> {
                 if (error == null) {
                     assert(pipeline() != null);
                     updateState(State.NO_GPS);
@@ -478,7 +486,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         Log.i(TAG, "Disconnect pipeline");
         FlightController flightController = aircraft.getFlightController();
-        flightController.getPipelines().disconnect(channelID, error -> {
+        if (flightController == null) {
+          return;
+        }
+        Pipelines pipelines = flightController.getPipelines();
+        if (pipelines == null) {
+          return;
+        }
+        pipelines.disconnect(channelID, error -> {
             if (error == PipelineError.CLOSED) {
                 // already closed
             } else if (error != null) {
@@ -493,6 +508,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         FlightController flightController = aircraft.getFlightController();
+        if (flightController == null) {
+          return null;
+        }
         Pipelines pipelines = flightController.getPipelines();
         if (pipelines == null) {
             return null;
