@@ -521,23 +521,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // read pipe thread
     private byte[] readPipeData(int length) {
         byte[] buffer = new byte[length];
-        int readResult = pipeline().readData(buffer, 0, buffer.length);
-        if (readResult == -10008) {
-            // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
-            return null;
-        }
-        if (readResult == -10011) {
-            // Connection closed:
-            // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
-            reconnect();
-            return null;
-        }
-        if (readResult <= 0) {
-            Log.e(TAG, "Read pipeline error: " + readResult);
-            return null;
+        while (true) {
+            int readResult = pipeline().readData(buffer, 0, buffer.length);
+            if (readResult == -10008) {
+                // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
+                continue;
+            }
+            if (readResult == -10011) {
+                // Connection closed:
+                // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
+                reconnect();
+                return null;
+            }
+            if (readResult <= 0) {
+                Log.e(TAG, "Read pipeline error: " + readResult);
+                return null;
+            }
+            assert(readResult == buffer.length);
+            break;
         }
 
-        assert(readResult == buffer.length);
         return buffer;
     }
 
