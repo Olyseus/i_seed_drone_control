@@ -167,6 +167,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
+        Interconnection.command_type.Builder builder1 = Interconnection.command_type.newBuilder();
+        builder1.setVersion(protocolVersion);
+        builder1.setType(Interconnection.command_type.command_t.PING);
+        commandByteLength = builder1.build().toByteArray().length;
+        assert (commandByteLength > 0);
+
+        Interconnection.drone_coordinates.Builder builder2 = Interconnection.drone_coordinates.newBuilder();
+        builder2.setLatitude(0.0);
+        builder2.setLongitude(0.0);
+        builder2.setHeading(0.0F);
+        droneCoordinatesByteLength = builder2.build().toByteArray().length;
+        assert (droneCoordinatesByteLength > 0);
+
         updateUIState(); // Init
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -492,23 +505,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (commandByteLength == 0) {
-            Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
-            builder.setVersion(protocolVersion);
-            builder.setType(Interconnection.command_type.command_t.PING);
-            commandByteLength = builder.build().toByteArray().length;
-            assert (commandByteLength > 0);
-        }
-
-        if (droneCoordinatesByteLength == 0) {
-            Interconnection.drone_coordinates.Builder builder = Interconnection.drone_coordinates.newBuilder();
-            builder.setLatitude(0.0);
-            builder.setLongitude(0.0);
-            builder.setHeading(0.0F);
-            droneCoordinatesByteLength = builder.build().toByteArray().length;
-            assert (droneCoordinatesByteLength > 0);
-        }
-
         byte[] buffer = readPipeData(commandByteLength);
         if (buffer == null) {
             return;
@@ -598,6 +594,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 builder.setVersion(protocolVersion);
                 builder.setType(Interconnection.command_type.command_t.PING);
                 byte[] bytesToSend = builder.build().toByteArray();
+                assert(bytesToSend.length == commandByteLength);
                 int writeResult = pipeline().writeData(bytesToSend, 0, bytesToSend.length);
                 if (writeResult == -10008) {
                     // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
