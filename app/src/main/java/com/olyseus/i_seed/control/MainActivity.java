@@ -850,6 +850,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     @Override
                     public void onProductConnect(BaseProduct baseProduct) {
+                        Log.i(TAG, "On product connect");
                         assert (baseProduct instanceof Aircraft);
                         aircraft = (Aircraft) baseProduct;
                         assert (aircraft != null);
@@ -888,19 +889,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
         for (Camera camera : cameras) {
-            Log.i(TAG, "Camera: " + camera.getDisplayName());
+            String displayName = camera.getDisplayName();
+            if (displayName == null) {
+                continue;
+            }
+            Log.i(TAG, "Camera: " + displayName);
+            assert(displayName.equals("Zenmuse H20"));
             camera.setLaserEnabled(true, null);
             camera.getLaserEnabled(new CommonCallbacks.CompletionCallbackWith<Boolean>() {
                 @Override
                 public void onSuccess(Boolean aBoolean) {
+                    Log.i(TAG, "Laser is ON: " + aBoolean);
                     assert(aBoolean == true);
-                    Log.i(TAG, "Laser is ON");
                     updateState(State.WAIT_LASER);
                     setupMeasurementCallback(camera);
                 }
 
                 @Override
-                public void onFailure(DJIError djiError) {}
+                public void onFailure(DJIError djiError) {
+                    Log.e(TAG, "Laser failure");
+                }
             });
         }
     }
