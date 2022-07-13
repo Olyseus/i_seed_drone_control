@@ -540,7 +540,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private byte[] readPipeData(int length) {
         byte[] buffer = new byte[length];
         while (true) {
-            int readResult = pipeline().readData(buffer, 0, buffer.length);
+            Pipeline pipe = pipeline();
+            if (pipe == null) {
+                return null;
+            }
+            int readResult = pipe.readData(buffer, 0, buffer.length);
             if (readResult == -10008) {
                 // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
                 continue;
@@ -945,11 +949,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     float targetDistance = laserMeasureInformation.getTargetDistance();
                     LaserError error = laserMeasureInformation.getLaserError();
                     if (error == LaserError.TOO_FAR) {
+                        Log.d(TAG, "Laser is too far");
                         laserError.set(LaserError.TOO_FAR);
                         updateState(State.ONLINE);
                         return;
                     }
                     if (error == LaserError.TOO_CLOSE) {
+                        Log.d(TAG, "Laser is too close");
                         laserError.set(LaserError.TOO_CLOSE);
                         updateState(State.ONLINE);
                         return;
