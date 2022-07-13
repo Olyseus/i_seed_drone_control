@@ -232,6 +232,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
     }
 
+    @Override
+    protected void onPause() {
+        Log.d(TAG, "onPause");
+        super.onPause();
+
+        disconnect();
+    }
+
+    @Override
+    protected void onStop() {
+        Log.d(TAG, "onStop");
+        super.onStop();
+
+        disconnect();
+    }
+
     // UI thread
     // read pipe thread
     private void setMissionStatus(Mission newMissionStatus, boolean fromDrone) {
@@ -432,8 +448,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
                 else {
                     if (error == PipelineError.NOT_READY) {
-                        Log.e(TAG, "Interconnection failed, sleep 5 seconds");
-                        sleep(5);
+                        Log.e(TAG, "Interconnection failed, sleep 1 second");
+                        sleep(1);
                     } else if (error == PipelineError.CONNECTION_REFUSED) {
                         Log.e(TAG, "Onboard not started, sleep 5 seconds");
                         showToast("No onboard connection");
@@ -480,11 +496,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // read pipe thread
     // write pipe thread
-    private void reconnect() {
+    private void disconnect() {
         if (aircraft == null) {
             return;
         }
-        Log.i(TAG, "Disconnect pipeline");
         FlightController flightController = aircraft.getFlightController();
         if (flightController == null) {
           return;
@@ -493,9 +508,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (pipelines == null) {
           return;
         }
+        Log.i(TAG, "Disconnect pipeline");
         pipelines.disconnect(channelID, error -> {
-            if (error == PipelineError.CLOSED) {
-                // already closed
+            if (error == null) {
+                Log.i(TAG, "Pipeline disconnected");
+            } else if (error == PipelineError.CLOSED) {
+                Log.i(TAG, "Pipeline disconnected (already closed)");
             } else if (error != null) {
                 Log.e(TAG, "Disconnect error: " + error.toString());
             }
@@ -530,7 +548,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (readResult == -10011) {
                 // Connection closed:
                 // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
-                reconnect();
+                disconnect();
                 return null;
             }
             if (readResult <= 0) {
@@ -649,7 +667,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (writeResult == -10011) {
                     // Connection closed: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
                     Log.e(TAG, "Write failed, connection closed");
-                    reconnect();
+                    disconnect();
                     return false;
                 }
                 if (writeResult > 0) {
