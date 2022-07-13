@@ -645,34 +645,48 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    private boolean sendBytesToPipe(byte[] bytesToSend) {
+        while (true) {
+            Pipeline pipe = pipeline();
+            if (pipe == null) {
+                return false;
+            }
+            int writeResult = pipe.writeData(bytesToSend, 0, bytesToSend.length);
+            if (writeResult == -10008) {
+                // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
+                Log.e(TAG, "Write failed, timeout");
+                continue;
+            }
+            if (writeResult == -10011) {
+                // Connection closed: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
+                Log.e(TAG, "Write failed, connection closed");
+                disconnect();
+                return false;
+            }
+            if (writeResult > 0) {
+                assert (writeResult == bytesToSend.length);
+                return true;
+            }
+            Log.e(TAG, "Write failed: " + writeResult);
+            return false;
+        }
+    }
+
+    private boolean sendCommandToPipe(Interconnection.command_type.command_t command) {
+        Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
+        builder.setVersion(protocolVersion);
+        builder.setType(command);
+        byte[] bytesToSend = builder.build().toByteArray();
+        assert(bytesToSend.length == commandByteLength);
+        return sendBytesToPipe(bytesToSend);
+    }
+
     // write pipe thread
     private boolean executeCommand(Interconnection.command_type.command_t command) {
         switch (command) {
             case PING:
                 Log.i(TAG, "Execute command PING");
-                Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
-                builder.setVersion(protocolVersion);
-                builder.setType(Interconnection.command_type.command_t.PING);
-                byte[] bytesToSend = builder.build().toByteArray();
-                assert(bytesToSend.length == commandByteLength);
-                int writeResult = pipeline().writeData(bytesToSend, 0, bytesToSend.length);
-                if (writeResult == -10008) {
-                    // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
-                    Log.e(TAG, "Write failed, timeout");
-                    return false;
-                }
-                if (writeResult == -10011) {
-                    // Connection closed: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
-                    Log.e(TAG, "Write failed, connection closed");
-                    disconnect();
-                    return false;
-                }
-                if (writeResult > 0) {
-                    assert(writeResult == bytesToSend.length);
-                    return true;
-                }
-                Log.e(TAG, "Write pipeline error: " + writeResult);
-                return false;
+                return sendCommandToPipe(Interconnection.command_type.command_t.PING);
             default:
                 assert(false);
         }
