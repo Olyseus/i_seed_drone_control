@@ -79,7 +79,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private ScheduledExecutorService writePipelineExecutor;
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
-    private boolean executionInProgress = false;
     private static boolean useBridge = false;
     private Aircraft aircraft = null;
     Marker droneMarker = null;
@@ -626,10 +625,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             return;
         }
-        if (executionInProgress) {
-            return;
-        }
-        executionInProgress = true;
 
         while (true) {
             Interconnection.command_type.command_t executeCommand = null;
@@ -648,8 +643,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 break;
             }
         }
-
-        executionInProgress = false;
     }
 
     // write pipe thread
