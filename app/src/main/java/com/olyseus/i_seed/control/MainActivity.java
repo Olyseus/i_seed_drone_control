@@ -698,6 +698,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case PING:
                 Log.i(TAG, "Execute command PING");
                 return sendCommandToPipe(Interconnection.command_type.command_t.PING);
+            case MISSION_START:
+                if (!sendCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
+                    return false;
+                }
+                assert(pinPoint != null);
+                Log.i(TAG, "Execute command MISSION_START: lat(" + pinLatitude + ") lon(" + pinLongitude + ")");
+                Interconnection.pin_coordinates.Builder builder = Interconnection.pin_coordinates.newBuilder();
+                builder.setLatitude(pinLatitude);
+                builder.setLongitude(pinLongitude);
+                byte[] bytesToSend = builder.build().toByteArray();
+                return sendBytesToPipe(bytesToSend);
+            case MISSION_PAUSE:
+                Log.i(TAG, "Execute command MISSION_PAUSE");
+                return sendCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
+            case MISSION_ABORT:
+                Log.i(TAG, "Execute command MISSION_ABORT");
+                return sendCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
             default:
                 assert(false);
         }
