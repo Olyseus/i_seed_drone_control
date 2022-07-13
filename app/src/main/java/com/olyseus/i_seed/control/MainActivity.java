@@ -82,7 +82,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static boolean useBridge = false;
     private Aircraft aircraft = null;
     Marker droneMarker = null;
+    private Object pinCoordinatesMutex = new Object();
     Marker pinPoint = null;
+    private double pinLongitude = 0.0;
+    private double pinLatitude = 0.0;
     Polyline tripLine = null;
     private Object mutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
@@ -368,6 +371,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
             pinPoint = gMap.addMarker(markerOptions);
             tripLine = gMap.addPolyline(new PolylineOptions().add(droneMarker.getPosition(), pinPoint.getPosition()));
+            synchronized (pinCoordinatesMutex) {
+                pinLongitude = pinPoint.getPosition().longitude;
+                pinLatitude = pinPoint.getPosition().latitude;
+            }
             PatternItem DASH = new Dash(20);
             PatternItem GAP = new Gap(20);
             tripLine.setPattern(Arrays.asList(DASH, GAP));
@@ -382,6 +389,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onClick(DialogInterface dialog, int which) {
                         pinPoint.setPosition(point);
                         tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+                        synchronized (pinCoordinatesMutex) {
+                            pinLongitude = pinPoint.getPosition().longitude;
+                            pinLatitude = pinPoint.getPosition().latitude;
+                        }
                         updateUIState();
                     }
                 })
