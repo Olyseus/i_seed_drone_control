@@ -197,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               try {
                 pollJob();
               }
-              catch (Exception e) {
+              catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "pollJob exception: " + e);
               }
@@ -209,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               try {
                 readPipelineJob();
               }
-              catch (Exception e) {
+              catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "readPipelineJob exception: " + e);
               }
@@ -221,7 +221,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               try {
                 writePipelineJob();
               }
-              catch (Exception e) {
+              catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "writePipelineJob exception: " + e);
               }
