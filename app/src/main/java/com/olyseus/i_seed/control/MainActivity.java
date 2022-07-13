@@ -830,9 +830,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onRegister(DJIError djiError) {
                         if (djiError == DJISDKError.REGISTRATION_SUCCESS) {
+                            Log.d(TAG, "Registration success");
                             if (useBridge) {
+                                Log.d(TAG, "Using bridge");
                                 DJISDKManager.getInstance().enableBridgeModeWithBridgeAppIP("192.168.0.227");
                             }
+                            Log.d(TAG, "Start connection to product");
                             DJISDKManager.getInstance().startConnectionToProduct();
                             updateState(State.NO_PRODUCT);
                             return;
