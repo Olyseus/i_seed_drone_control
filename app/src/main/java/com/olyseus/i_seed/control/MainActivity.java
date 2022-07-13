@@ -615,6 +615,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
                     break;
                 case MISSION_FINISHED:
+                    Log.i(TAG, "Mission finished");
                     setMissionStatus(Mission.STOPPED, true);
                     break;
                 default:
