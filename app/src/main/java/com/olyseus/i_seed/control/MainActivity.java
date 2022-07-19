@@ -357,14 +357,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         pinPoint.remove();
-                        tripLine.remove();
                         pinPoint = null;
-                        tripLine = null;
-                        updateUIState();
+                        updateTripLine();
                     }
                 })
                 .setNegativeButton("No", null)
                 .show();
+    }
+
+    // Call when 'droneMarker' or 'pinPoint' changes
+    private void updateTripLine() {
+        if (droneMarker == null || pinPoint == null) {
+            if (tripLine != null) {
+                tripLine.remove();
+                tripLine = null;
+            }
+            return;
+        }
+
+        if (tripLine == null) {
+            tripLine = gMap.addPolyline(new PolylineOptions().add(droneMarker.getPosition(), pinPoint.getPosition()));
+            PatternItem DASH = new Dash(20);
+            PatternItem GAP = new Gap(20);
+            tripLine.setPattern(Arrays.asList(DASH, GAP));
+        } else {
+            tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+        }
     }
 
     // UI thread
@@ -381,15 +399,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             markerOptions.position(point);
             markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
             pinPoint = gMap.addMarker(markerOptions);
-            tripLine = gMap.addPolyline(new PolylineOptions().add(droneMarker.getPosition(), pinPoint.getPosition()));
             synchronized (pinCoordinatesMutex) {
                 pinLongitude = pinPoint.getPosition().longitude;
                 pinLatitude = pinPoint.getPosition().latitude;
             }
-            PatternItem DASH = new Dash(20);
-            PatternItem GAP = new Gap(20);
-            tripLine.setPattern(Arrays.asList(DASH, GAP));
-            updateUIState();
+            updateTripLine();
             return;
         }
 
@@ -399,12 +413,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         pinPoint.setPosition(point);
-                        tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
                         synchronized (pinCoordinatesMutex) {
                             pinLongitude = pinPoint.getPosition().longitude;
                             pinLatitude = pinPoint.getPosition().latitude;
                         }
-                        updateUIState();
+                        updateTripLine();
                     }
                 })
                 .setNegativeButton("No", null)
@@ -1102,9 +1115,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (droneMarker != null) {
             droneMarker.setPosition(pos);
             droneMarker.setRotation(heading);
-            if (pinPoint != null) {
-                tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
-            }
+            updateTripLine();
             return;
         }
 
@@ -1116,9 +1127,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.rotation(heading);
         markerOptions.anchor(0.5F, 0.5F);
         droneMarker = gMap.addMarker(markerOptions);
-        if (pinPoint != null) {
-            tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
-        }
+        updateTripLine();
         zoomToDrone();
     }
 
