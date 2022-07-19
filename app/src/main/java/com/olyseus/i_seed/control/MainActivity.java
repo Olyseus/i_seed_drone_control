@@ -467,7 +467,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         FlightController flightController = aircraft.getFlightController();
 
         if (flightController == null) {
-          return;
+            return;
         }
 
         if (pipeline() == null) {
