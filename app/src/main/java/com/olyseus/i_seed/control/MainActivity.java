@@ -468,7 +468,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             pipelines.connect(channelID, TransmissionControlType.STABLE, error -> {
                 if (error == null) {
+                    Log.i(TAG, "Pipeline connected");
                     assert(pipeline() != null);
+                    sleep(5);
                     updateState(State.NO_GPS);
                 }
                 else {
