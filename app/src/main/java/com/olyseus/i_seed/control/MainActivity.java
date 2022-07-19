@@ -1097,6 +1097,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.position(pos);
         markerOptions.rotation(heading);
         markerOptions.anchor(0.5F, 0.5F);
+        markerOptions.flat(true);
         droneMarker = gMap.addMarker(markerOptions);
         updateTripLine();
         zoomToDrone();
