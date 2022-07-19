@@ -473,8 +473,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
                 else {
                     if (error == PipelineError.NOT_READY) {
-                        Log.e(TAG, "Interconnection failed, sleep 1 second");
-                        sleep(1);
+                        Log.e(TAG, "Interconnection failed, sleep 5 second");
+                        sleep(5);
                     } else if (error == PipelineError.CONNECTION_REFUSED) {
                         Log.e(TAG, "Onboard not started, sleep 5 seconds");
                         showToast("No onboard connection");
