@@ -633,11 +633,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         return;
                     }
                     Interconnection.drone_coordinates coordinates = Interconnection.drone_coordinates.parseFrom(crdBuffer);
+                    Log.d(TAG, "Drone coordinates received");
                     synchronized (droneCoordinatesMutex) {
                         droneLatitude = coordinates.getLatitude();
                         droneLongitude = coordinates.getLongitude();
                         droneHeading = coordinates.getHeading();
                     }
+                    handler.sendEmptyMessage(0);
                     break;
                 case MISSION_FINISHED:
                     Log.i(TAG, "Mission finished");
