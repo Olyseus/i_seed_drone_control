@@ -692,7 +692,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private boolean sendBytesToPipe(byte[] bytesToSend) {
+    private boolean writePipeData(byte[] bytesToSend) {
         while (true) {
             Pipeline pipe = pipeline();
             if (pipe == null) {
@@ -719,13 +719,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private boolean sendCommandToPipe(Interconnection.command_type.command_t command) {
+    private boolean writeCommandToPipe(Interconnection.command_type.command_t command) {
         Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
         builder.setVersion(protocolVersion);
         builder.setType(command);
         byte[] bytesToSend = builder.build().toByteArray();
         assert(bytesToSend.length == commandByteLength);
-        return sendBytesToPipe(bytesToSend);
+        return writePipeData(bytesToSend);
     }
 
     // write pipe thread
@@ -733,9 +733,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         switch (command) {
             case PING:
                 Log.i(TAG, "Execute command PING");
-                return sendCommandToPipe(Interconnection.command_type.command_t.PING);
+                return writeCommandToPipe(Interconnection.command_type.command_t.PING);
             case MISSION_START:
-                if (!sendCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
                     return false;
                 }
                 assert(pinPoint != null);
@@ -744,13 +744,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 builder.setLatitude(pinLatitude);
                 builder.setLongitude(pinLongitude);
                 byte[] bytesToSend = builder.build().toByteArray();
-                return sendBytesToPipe(bytesToSend);
+                return writePipeData(bytesToSend);
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
-                return sendCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
+                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
-                return sendCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
+                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
             default:
                 assert(false);
         }
