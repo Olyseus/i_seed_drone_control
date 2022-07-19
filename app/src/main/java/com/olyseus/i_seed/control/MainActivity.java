@@ -53,6 +53,7 @@ import dji.common.camera.LaserError;
 import dji.common.camera.LaserMeasureInformation;
 import dji.common.error.DJIError;
 import dji.common.error.DJISDKError;
+import dji.common.flightcontroller.BatteryThresholdBehavior;
 import dji.common.flightcontroller.FlightControllerState;
 import dji.common.flightcontroller.GPSSignalLevel;
 import dji.common.util.CommonCallbacks;
@@ -107,6 +108,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         MAP_NOT_READY,
         NOT_REGISTERED,
         NO_PRODUCT,
+        LOW_BATTERY,
         CONNECTING,
         NO_GPS,
         LASER_OFF,
@@ -476,6 +478,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
+        FlightControllerState flightState = flightController.getState();
+        if (flightState.getBatteryThresholdBehavior() != BatteryThresholdBehavior.FLY_NORMALLY) {
+            updateState(State.LOW_BATTERY);
+            return;
+        }
+
         if (pipeline() == null) {
             updateState(State.CONNECTING);
             if (pipelineStatus.isConnectionInProgress()) {
@@ -530,7 +538,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         assert(pipelineStatus.isConnected());
 
-        FlightControllerState flightState = flightController.getState();
         GPSSignalLevel gpsSignalLevel = flightState.getGPSSignalLevel();
         switch (gpsSignalLevel) {
             case NONE:
@@ -838,6 +845,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case MAP_NOT_READY:
             case NOT_REGISTERED:
             case NO_PRODUCT:
+            case LOW_BATTERY:
                 return android.R.color.holo_red_light;
             case CONNECTING:
             case NO_GPS:
@@ -861,6 +869,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "Not registered";
             case NO_PRODUCT:
                 return "No product";
+            case LOW_BATTERY:
+                return "Low battery";
             case CONNECTING:
                 return "Connecting";
             case NO_GPS:
