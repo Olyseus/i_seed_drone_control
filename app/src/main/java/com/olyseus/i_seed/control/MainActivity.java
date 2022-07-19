@@ -80,7 +80,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
     private static boolean useBridge = false;
-    private Aircraft aircraft = null;
+    private AtomicReference<Aircraft> aircraft = new AtomicReference<Aircraft>(null);
     Marker droneMarker = null;
     private Object pinCoordinatesMutex = new Object();
     Marker pinPoint = null;
@@ -459,12 +459,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (aircraft == null) {
+        if (aircraft.get() == null) {
             updateState(State.NO_PRODUCT);
             return;
         }
 
-        FlightController flightController = aircraft.getFlightController();
+        FlightController flightController = aircraft.get().getFlightController();
 
         if (flightController == null) {
             updateState(State.NO_PRODUCT);
@@ -543,10 +543,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (aircraft == null) {
+        if (aircraft.get() == null) {
             return;
         }
-        FlightController flightController = aircraft.getFlightController();
+        FlightController flightController = aircraft.get().getFlightController();
         if (flightController == null) {
           return;
         }
@@ -570,11 +570,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private Pipeline pipeline() {
-        if (aircraft == null) {
+        if (aircraft.get() == null) {
             return null;
         }
 
-        FlightController flightController = aircraft.getFlightController();
+        FlightController flightController = aircraft.get().getFlightController();
         if (flightController == null) {
           return null;
         }
@@ -958,15 +958,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onProductDisconnect() {
                         Log.e(TAG, "Product disconnect");
-                        aircraft = null;
+                        aircraft.set(null);
                     }
 
                     @Override
                     public void onProductConnect(BaseProduct baseProduct) {
                         Log.i(TAG, "On product connect");
                         assert (baseProduct instanceof Aircraft);
-                        aircraft = (Aircraft) baseProduct;
-                        assert (aircraft != null);
+                        aircraft.set((Aircraft) baseProduct);
+                        assert (aircraft.get() != null);
                     }
 
                     @Override
@@ -976,11 +976,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onProductChanged(BaseProduct baseProduct) {
                         assert (baseProduct instanceof Aircraft);
                         Aircraft newAircraft = (Aircraft) baseProduct;
-                        if (aircraft != null) {
-                            assert(aircraft == newAircraft);
+                        if (aircraft.get() != null) {
+                            assert(aircraft.get() == newAircraft);
                         }
-                        aircraft = newAircraft;
-                        assert (aircraft != null);
+                        aircraft.set(newAircraft);
+                        assert (aircraft.get() != null);
                     }
 
                     @Override
@@ -995,7 +995,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void enableLaser() {
-        List<Camera> cameras = aircraft.getCameras();
+        List<Camera> cameras = aircraft.get().getCameras();
         if (cameras.isEmpty()) {
             return;
         }
