@@ -420,6 +420,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void updateState(State newState) {
+        Log.d(TAG, "Update state: " + newState);
         state.set(newState);
         handler.sendEmptyMessage(0);
     }
