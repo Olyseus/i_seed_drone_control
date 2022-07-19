@@ -97,6 +97,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double droneLongitude = 0.0;
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
+    private boolean appOnPause = false;
 
     enum State {
         NO_PERMISSIONS,
@@ -144,6 +145,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        appOnPause = false;
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Button actionButton = (Button) findViewById(R.id.actionButton);
@@ -236,10 +239,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     protected void onPause() {
+        appOnPause = true;
         Log.d(TAG, "onPause");
         super.onPause();
 
         disconnect();
+    }
+
+    @Override
+    protected void onResume() {
+        appOnPause = false;
+        Log.d(TAG, "onResume");
+        super.onResume();
     }
 
     @Override
@@ -414,6 +425,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void pollJob() {
+        if (appOnPause) {
+            return;
+        }
+
         if (!missingPermission.isEmpty()) {
             updateState(State.NO_PERMISSIONS);
             return;
