@@ -98,6 +98,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
     private boolean appOnPause = false;
+    LaserStatus laserStatus;
+    PipelineStatus pipelineStatus;
 
     enum State {
         NO_PERMISSIONS,
@@ -105,11 +107,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         NOT_REGISTERED,
         NO_PRODUCT,
         CONNECTING,
-        INTERCONNECTION_ERROR,
         NO_GPS,
         LASER_OFF,
-        WAIT_LASER,
-        LASER_ERROR,
         ONLINE
     }
 
@@ -120,8 +119,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
-    private AtomicReference<LaserError> laserError = new AtomicReference<LaserError>(LaserError.NO_SIGNAL);
-    private AtomicReference<Float> laserDistance = new AtomicReference<Float>(0.0F);
     private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
 
     private static final String[] REQUIRED_PERMISSION_LIST = new String[]{
@@ -312,6 +309,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             new MaterialAlertDialogBuilder(this).setMessage("The map is not ready yet").setPositiveButton("Ok", null).show();
             return;
         }
+        if (droneMarker == null) {
+            new MaterialAlertDialogBuilder(this).setMessage("Please wait for a drone coordinates").setPositiveButton("Ok", null).show();
+            return;
+        }
         if (pinPoint == null) {
             new MaterialAlertDialogBuilder(this).setMessage("Please drop a pin to start").setPositiveButton("Ok", null).show();
             return;
@@ -472,44 +473,47 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         if (pipeline() == null) {
-            if (state.get() == State.CONNECTING) {
+            updateState(State.CONNECTING);
+            if (pipelineStatus.isConnectionInProgress()) {
                 return;
             }
-            updateState(State.CONNECTING);
-
             Pipelines pipelines = flightController.getPipelines();
             if (pipelines == null) {
               return;
             }
+            pipelineStatus.setConnectionInProgress();
             pipelines.connect(channelID, TransmissionControlType.STABLE, error -> {
                 if (error == null) {
                     Log.i(TAG, "Pipeline connected");
                     assert(pipeline() != null);
-                    sleep(5);
-                    updateState(State.NO_GPS);
+                    pipelineStatus.setConnected(true);
+                    return;
                 }
-                else {
-                    if (error == PipelineError.NOT_READY) {
-                        Log.e(TAG, "Interconnection failed, sleep 5 second");
-                        sleep(5);
-                    } else if (error == PipelineError.CONNECTION_REFUSED) {
-                        Log.e(TAG, "Onboard not started, sleep 5 seconds");
-                        showToast("No onboard connection");
-                        sleep(5);
-                    } else if (error == PipelineError.INVALID_PARAMETERS) {
-                        // Can be received when Onboard SDK stopped and started again
-                    } else if (error == PipelineError.TIMEOUT) {
-                        Log.e(TAG, "Interconnection failed by timeout, sleep 5 seconds");
-                        sleep(5);
-                    } else {
-                        Log.e(TAG, "Interconnection error: " + error.toString());
-                    }
-                    // Can return non-null even if on error code. Happens on Onboard SDK restart (auto-reconnect?)
-                    updateState(pipeline() == null ? State.INTERCONNECTION_ERROR : State.NO_GPS);
+                pipelineStatus.setConnected(false);
+                if (error == PipelineError.NOT_READY) {
+                    Log.e(TAG, "Interconnection failed, sleep 5 second");
+                    sleep(5);
+                } else if (error == PipelineError.CONNECTION_REFUSED) {
+                    Log.e(TAG, "Onboard not started, sleep 5 seconds");
+                    showToast("No onboard connection");
+                    sleep(5);
+                } else if (error == PipelineError.INVALID_PARAMETERS) {
+                    // Can be received when Onboard SDK stopped and started again
+                } else if (error == PipelineError.TIMEOUT) {
+                    Log.e(TAG, "Interconnection failed by timeout, sleep 5 seconds");
+                    sleep(5);
+                } else {
+                    Log.e(TAG, "Interconnection error: " + error.toString());
                 }
             });
             return;
         }
+
+        if (pipelineStatus.isDisconnectionInProgress()) {
+            updateState(State.CONNECTING);
+            return;
+        }
+        assert(pipelineStatus.isConnected());
 
         FlightControllerState flightState = flightController.getState();
         GPSSignalLevel gpsSignalLevel = flightState.getGPSSignalLevel();
@@ -524,25 +528,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case LEVEL_3:
             case LEVEL_4:
             case LEVEL_5:
-                if (state.get() == State.NO_GPS) {
-                    updateState(State.LASER_OFF);
-                }
                 break;
         }
 
-        if (state.get() == State.LASER_OFF) {
+        if (laserStatus.isEnabled()) {
+            updateState(State.ONLINE);
+        } else {
+            updateState(State.LASER_OFF);
             enableLaser();
-            return;
         }
     }
 
     // read pipe thread
     // write pipe thread
     private void disconnect() {
+        if (pipelineStatus.isDisconnectionInProgress()) {
+            return;
+        }
         if (pipeline() == null) {
             return;
         }
-
         if (aircraft.get() == null) {
             return;
         }
@@ -556,6 +561,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         Log.i(TAG, "Disconnect pipeline");
+        pipelineStatus.setDisconnectionInProgress();
         pipelines.disconnect(channelID, error -> {
             if (error == null) {
                 Log.i(TAG, "Pipeline disconnected");
@@ -564,16 +570,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             } else if (error != null) {
                 Log.e(TAG, "Disconnect error: " + error.toString());
             }
+            assert(pipeline() == null);
+            pipelineStatus.setConnected(false);
         });
-
-        updateState(State.INTERCONNECTION_ERROR);
     }
 
     private Pipeline pipeline() {
         if (aircraft.get() == null) {
             return null;
         }
-
         FlightController flightController = aircraft.get().getFlightController();
         if (flightController == null) {
           return null;
@@ -589,7 +594,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private byte[] readPipeData(int length) {
         byte[] buffer = new byte[length];
         while (true) {
-            if (state.get() != State.ONLINE) {
+            if (!pipelineStatus.isConnected()) {
                 sleep(5);
                 continue;
             }
@@ -623,12 +628,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // read pipe thread
     private void readPipelineJob() {
         if (appOnPause) {
-            return;
-        }
-        if (state.get() != State.ONLINE) {
-            return;
-        }
-        if (pipeline() == null) {
             return;
         }
 
@@ -714,6 +713,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private boolean writePipeData(byte[] bytesToSend) {
         while (true) {
+            if (!pipelineStatus.isConnected()) {
+                sleep(5);
+                continue;
+            }
             Pipeline pipe = pipeline();
             if (pipe == null) {
                 return false;
@@ -785,27 +788,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         droneStatus.setText(getDroneButtonText());
         droneStatus.setTextColor(getResources().getColor(buttonColor));
 
-        Button laserStatus = findViewById(R.id.laserStatus);
-        if (state.get() == State.ONLINE) {
-            String msg = "";
-            switch (laserError.get()) {
-                case TOO_CLOSE:
-                    msg = "too close";
-                    break;
-                case TOO_FAR:
-                    msg = "too far";
-                    break;
-                case NORMAL:
-                    msg = String.format("%.1f", laserDistance.get());
-                    break;
-                default:
-                    assert(false);
-            }
-            laserStatus.setText("Laser: " + msg);
-        }
-        else {
-            laserStatus.setText("Laser: N/A");
-        }
+        Button laserStatusButton = findViewById(R.id.laserStatus);
+        laserStatusButton.setText("Laser: " + laserStatus.getLaserStatus());
 
         ImageButton cancelButton = findViewById(R.id.cancelButton);
         if ((mission_status.get() != Mission.STOPPED) || (pinPoint != null)) {
@@ -840,11 +824,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case NO_PRODUCT:
                 return android.R.color.holo_red_light;
             case CONNECTING:
-            case INTERCONNECTION_ERROR:
             case NO_GPS:
             case LASER_OFF:
-            case WAIT_LASER:
-            case LASER_ERROR:
                 return android.R.color.holo_orange_light;
             case ONLINE:
                 return android.R.color.holo_green_dark;
@@ -866,16 +847,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "No product";
             case CONNECTING:
                 return "Connecting";
-            case INTERCONNECTION_ERROR:
-                return "Interconnection error";
             case NO_GPS:
                 return "No GPS";
             case LASER_OFF:
                 return "Laser is off";
-            case WAIT_LASER:
-                return "Waiting laser";
-            case LASER_ERROR:
-                return "Laser error";
             case ONLINE:
                 return "Online";
             default:
@@ -967,6 +942,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         assert (baseProduct instanceof Aircraft);
                         aircraft.set((Aircraft) baseProduct);
                         assert (aircraft.get() != null);
+                        laserStatus.setEnabled(false);
+                        pipelineStatus.setConnected(false);
                     }
 
                     @Override
@@ -995,6 +972,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void enableLaser() {
+        if (aircraft.get() == null) {
+            return;
+        }
         List<Camera> cameras = aircraft.get().getCameras();
         if (cameras.isEmpty()) {
             return;
@@ -1012,7 +992,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 public void onSuccess(Boolean aBoolean) {
                     Log.i(TAG, "Laser is ON: " + aBoolean);
                     assert(aBoolean == true);
-                    updateState(State.WAIT_LASER);
+                    laserStatus.setEnabled(true);
                     setupMeasurementCallback(camera);
                 }
 
@@ -1031,32 +1011,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 public void onUpdate(LaserMeasureInformation laserMeasureInformation) {
                     float targetDistance = laserMeasureInformation.getTargetDistance();
                     LaserError error = laserMeasureInformation.getLaserError();
-                    if (error == LaserError.TOO_FAR) {
-                        Log.d(TAG, "Laser is too far");
-                        laserError.set(LaserError.TOO_FAR);
-                        updateState(State.ONLINE);
-                        return;
-                    }
-                    if (error == LaserError.TOO_CLOSE) {
-                        Log.d(TAG, "Laser is too close");
-                        laserError.set(LaserError.TOO_CLOSE);
-                        updateState(State.ONLINE);
-                        return;
-                    }
-                    if (error == LaserError.NO_SIGNAL) {
-                        Log.e(TAG, "Laser no signal");
-                        updateState(State.LASER_ERROR);
-                        return;
-                    }
-                    if (error == LaserError.UNKNOWN) {
-                        Log.e(TAG, "Laser state is unknown");
-                        updateState(State.LASER_ERROR);
-                        return;
-                    }
-                    assert(error == LaserError.NORMAL);
-                    laserError.set(LaserError.NORMAL);
-                    updateState(State.ONLINE);
-                    laserDistance.set(targetDistance);
+                    laserStatus.onUpdate(error, targetDistance);
                     Log.d(TAG, "Laser info: " + laserMeasureInformation);
                 }
             });
