@@ -263,7 +263,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // UI thread
     // read pipe thread
-    private void setMissionStatus(Mission newMissionStatus, boolean fromDrone) {
+    private void updateMissionStatus(Mission newMissionStatus, boolean fromDrone) {
         switch (newMissionStatus) {
             case STOPPED:
                 assert(mission_status.get() != Mission.STOPPED);
@@ -298,11 +298,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // UI thread
     private void actionButtonClicked() {
         if (mission_status.get() == Mission.PAUSED) {
-            setMissionStatus(Mission.IN_PROGRESS, false);
+            updateMissionStatus(Mission.IN_PROGRESS, false);
             return;
         }
         if (mission_status.get() == Mission.IN_PROGRESS) {
-            setMissionStatus(Mission.PAUSED, false);
+            updateMissionStatus(Mission.PAUSED, false);
             return;
         }
         if (state.get() != State.ONLINE) {
@@ -323,7 +323,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        setMissionStatus(Mission.IN_PROGRESS, false);
+                        updateMissionStatus(Mission.IN_PROGRESS, false);
                     }
                 })
                 .setNegativeButton("No", null)
@@ -342,7 +342,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            setMissionStatus(Mission.STOPPED, false);
+                            updateMissionStatus(Mission.STOPPED, false);
                         }
                     })
                     .setNegativeButton("No", null)
@@ -664,7 +664,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     break;
                 case MISSION_FINISHED:
                     Log.i(TAG, "Mission finished");
-                    setMissionStatus(Mission.STOPPED, true);
+                    updateMissionStatus(Mission.STOPPED, true);
                     break;
                 default:
                     assert(false);
