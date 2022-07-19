@@ -621,6 +621,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // read pipe thread
     private void readPipelineJob() {
+        if (appOnPause) {
+            return;
+        }
         if (state.get() != State.ONLINE) {
             return;
         }
@@ -677,6 +680,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // write pipe thread
     private void writePipelineJob() {
+        if (appOnPause) {
+            return;
+        }
         if (pipeline() == null) {
             synchronized (executeCommandsMutex) {
                 if (executeCommands.size() > 0) {
