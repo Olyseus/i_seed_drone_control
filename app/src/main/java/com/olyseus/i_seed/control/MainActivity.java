@@ -87,7 +87,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double pinLongitude = 0.0;
     private double pinLatitude = 0.0;
     Polyline tripLine = null;
-    private Object mutex = new Object();
+    private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int commandByteLength = 0;
     private int droneCoordinatesByteLength = 0;
@@ -271,7 +271,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     // Mission finished
                 } else {
                     // Aborting mission
-                    synchronized (mutex) {
+                    synchronized (executeCommandsMutex) {
                         executeCommands.add(Interconnection.command_type.command_t.MISSION_ABORT);
                     }
                 }
@@ -279,14 +279,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case IN_PROGRESS:
                 assert(mission_status.get() != Mission.IN_PROGRESS);
                 assert(!fromDrone);
-                synchronized (mutex) {
+                synchronized (executeCommandsMutex) {
                     executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
                 }
                 break;
             case PAUSED:
                 assert(mission_status.get() == Mission.IN_PROGRESS);
                 assert(!fromDrone);
-                synchronized (mutex) {
+                synchronized (executeCommandsMutex) {
                     executeCommands.add(Interconnection.command_type.command_t.MISSION_PAUSE);
                 }
                 break;
@@ -665,7 +665,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // write pipe thread
     private void writePipelineJob() {
         if (pipeline() == null) {
-            synchronized (mutex) {
+            synchronized (executeCommandsMutex) {
                 if (executeCommands.size() > 0) {
                     Log.w(TAG, "Number of commands in queue: " + executeCommands.size());
                 }
@@ -675,14 +675,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         while (true) {
             Interconnection.command_type.command_t executeCommand = null;
-            synchronized (mutex) {
+            synchronized (executeCommandsMutex) {
                 if (executeCommands.isEmpty()) {
                     break;
                 }
                 executeCommand = executeCommands.get(0);
             }
             if (executeCommand(executeCommand)) {
-                synchronized (mutex) {
+                synchronized (executeCommandsMutex) {
                     executeCommands.remove(0);
                 }
             }
