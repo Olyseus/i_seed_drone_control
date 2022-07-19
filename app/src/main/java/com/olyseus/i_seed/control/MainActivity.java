@@ -98,6 +98,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
     private boolean appOnPause = false;
+    private boolean waitForPingReceived = false;
     LaserStatus laserStatus = new LaserStatus();
     PipelineStatus pipelineStatus = new PipelineStatus();
 
@@ -490,6 +491,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Log.i(TAG, "Pipeline connected");
                     assert(pipeline() != null);
                     pipelineStatus.setConnected(true);
+                    waitForPingReceived = true;
+                    synchronized (executeCommandsMutex) {
+                        if (!executeCommands.contains(Interconnection.command_type.command_t.PING)) {
+                            executeCommands.add(Interconnection.command_type.command_t.PING);
+                        }
+                    }
                     return;
                 }
                 pipelineStatus.setConnected(false);
@@ -509,6 +516,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Log.e(TAG, "Interconnection error: " + error.toString());
                 }
             });
+            return;
+        }
+
+        if (waitForPingReceived) {
+            updateState(State.CONNECTING);
             return;
         }
 
@@ -653,6 +665,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             switch (command.getType()) {
                 case PING:
                     Log.i(TAG, "PING received");
+                    waitForPingReceived = false;
                     break;
                 case DRONE_COORDINATES:
                     byte[] crdBuffer = readPipeData(droneCoordinatesByteLength);
@@ -947,6 +960,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         assert (aircraft.get() != null);
                         laserStatus.setEnabled(false);
                         pipelineStatus.setConnected(false);
+                        waitForPingReceived = false;
                     }
 
                     @Override
