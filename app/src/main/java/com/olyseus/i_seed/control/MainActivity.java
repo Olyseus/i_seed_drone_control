@@ -98,8 +98,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
     private boolean appOnPause = false;
-    LaserStatus laserStatus;
-    PipelineStatus pipelineStatus;
+    LaserStatus laserStatus = new LaserStatus();
+    PipelineStatus pipelineStatus = new PipelineStatus();
 
     enum State {
         NO_PERMISSIONS,
@@ -433,6 +433,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void updateState(State newState) {
+        if (state.get() == newState) {
+            return;
+        }
         Log.d(TAG, "Update state: " + newState);
         state.set(newState);
         handler.sendEmptyMessage(0);
