@@ -103,7 +103,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         NO_PERMISSIONS,
         MAP_NOT_READY,
         NOT_REGISTERED,
-        REGISTRATION_FAILED,
         NO_PRODUCT,
         CONNECTING,
         INTERCONNECTION_ERROR,
@@ -461,12 +460,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         if (aircraft == null) {
+            updateState(State.NO_PRODUCT);
             return;
         }
 
         FlightController flightController = aircraft.getFlightController();
 
         if (flightController == null) {
+            updateState(State.NO_PRODUCT);
             return;
         }
 
@@ -836,7 +837,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case NO_PERMISSIONS:
             case MAP_NOT_READY:
             case NOT_REGISTERED:
-            case REGISTRATION_FAILED:
             case NO_PRODUCT:
                 return android.R.color.holo_red_light;
             case CONNECTING:
@@ -862,8 +862,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "Map not ready";
             case NOT_REGISTERED:
                 return "Not registered";
-            case REGISTRATION_FAILED:
-                return "Registration failed";
             case NO_PRODUCT:
                 return "No product";
             case CONNECTING:
@@ -949,21 +947,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             }
                             Log.d(TAG, "Start connection to product");
                             DJISDKManager.getInstance().startConnectionToProduct();
-                            updateState(State.NO_PRODUCT);
                             return;
                         }
 
                         // Check bundle id and network connection
                         Log.e(TAG, "Registration failed: " + djiError.getDescription());
                         sdkRegistrationStarted = false;
-                        updateState(State.REGISTRATION_FAILED);
                     }
 
                     @Override
                     public void onProductDisconnect() {
                         Log.e(TAG, "Product disconnect");
                         aircraft = null;
-                        updateState(State.NO_PRODUCT);
                     }
 
                     @Override
@@ -972,7 +967,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         assert (baseProduct instanceof Aircraft);
                         aircraft = (Aircraft) baseProduct;
                         assert (aircraft != null);
-                        updateState(State.LASER_OFF);
                     }
 
                     @Override
@@ -987,7 +981,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         }
                         aircraft = newAircraft;
                         assert (aircraft != null);
-                        updateState(State.LASER_OFF);
                     }
 
                     @Override
