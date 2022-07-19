@@ -1078,6 +1078,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (droneMarker != null) {
             droneMarker.setPosition(pos);
             droneMarker.setRotation(heading);
+            if (pinPoint != null) {
+                tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+            }
             return;
         }
 
@@ -1089,6 +1092,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.rotation(heading);
         markerOptions.anchor(0.5F, 0.5F);
         droneMarker = gMap.addMarker(markerOptions);
+        if (pinPoint != null) {
+            tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
+        }
         zoomToDrone();
     }
 
