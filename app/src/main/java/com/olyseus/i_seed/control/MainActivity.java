@@ -525,6 +525,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // read pipe thread
     // write pipe thread
     private void disconnect() {
+        if (pipeline() == null) {
+            return;
+        }
+
         if (aircraft == null) {
             return;
         }
@@ -536,6 +540,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (pipelines == null) {
           return;
         }
+
         Log.i(TAG, "Disconnect pipeline");
         pipelines.disconnect(channelID, error -> {
             if (error == null) {
@@ -546,6 +551,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Log.e(TAG, "Disconnect error: " + error.toString());
             }
         });
+
+        updateState(State.INTERCONNECTION_ERROR);
     }
 
     private Pipeline pipeline() {
