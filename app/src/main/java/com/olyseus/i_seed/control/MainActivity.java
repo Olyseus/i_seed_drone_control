@@ -56,6 +56,7 @@ import dji.common.error.DJISDKError;
 import dji.common.flightcontroller.BatteryThresholdBehavior;
 import dji.common.flightcontroller.FlightControllerState;
 import dji.common.flightcontroller.GPSSignalLevel;
+import dji.common.remotecontroller.RCMode;
 import dji.common.util.CommonCallbacks;
 import dji.mop.common.PipelineError;
 import dji.mop.common.Pipelines;
@@ -65,6 +66,7 @@ import dji.sdk.camera.Camera;
 import dji.sdk.camera.Lens;
 import dji.sdk.flightcontroller.FlightController;
 import dji.sdk.products.Aircraft;
+import dji.sdk.remotecontroller.RemoteController;
 import dji.sdk.sdkmanager.DJISDKInitEvent;
 import dji.sdk.sdkmanager.DJISDKManager;
 import dji.mop.common.Pipeline;
@@ -108,6 +110,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         MAP_NOT_READY,
         NOT_REGISTERED,
         NO_PRODUCT,
+        WAIT_RC,
+        RC_ERROR,
         LOW_BATTERY,
         CONNECTING,
         NO_GPS,
@@ -123,6 +127,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
     private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
+    private AtomicReference<RCMode> latestRcMode = new AtomicReference<RCMode>(null);
 
     private static final String[] REQUIRED_PERMISSION_LIST = new String[]{
             Manifest.permission.BLUETOOTH,
@@ -485,6 +490,37 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         if (pipeline() == null) {
+            RemoteController remoteController = aircraft.get().getRemoteController();
+            if (remoteController == null) {
+                Log.e(TAG, "No remote controller");
+                updateState(State.WAIT_RC);
+                return;
+            }
+
+            remoteController.getMode(new CommonCallbacks.CompletionCallbackWith<RCMode>() {
+                @Override
+                public void onSuccess(RCMode rcMode) {
+                    latestRcMode.set(rcMode);
+                }
+
+                @Override
+                public void onFailure(DJIError djiError) {
+                    latestRcMode.set(null);
+                }
+            });
+
+            if (latestRcMode.get() == null) {
+                Log.e(TAG, "Waiting for RCMode");
+                updateState(State.WAIT_RC);
+                return;
+            }
+
+            if (latestRcMode.get() != RCMode.CHANNEL_A) {
+                Log.e(TAG, "RC Mode: " + latestRcMode.get());
+                updateState(State.RC_ERROR);
+                return;
+            }
+
             updateState(State.CONNECTING);
             if (pipelineStatus.isConnectionInProgress()) {
                 return;
@@ -845,8 +881,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case MAP_NOT_READY:
             case NOT_REGISTERED:
             case NO_PRODUCT:
+            case RC_ERROR:
             case LOW_BATTERY:
                 return android.R.color.holo_red_light;
+            case WAIT_RC:
             case CONNECTING:
             case NO_GPS:
             case LASER_OFF:
@@ -869,6 +907,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return "Not registered";
             case NO_PRODUCT:
                 return "No product";
+            case RC_ERROR:
+                return "RC error";
+            case WAIT_RC:
+                return "Waiting RC";
             case LOW_BATTERY:
                 return "Low battery";
             case CONNECTING:
@@ -971,6 +1013,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         laserStatus.setEnabled(false);
                         pipelineStatus.setConnected(false);
                         waitForPingReceived = false;
+                        latestRcMode.set(null);
                     }
 
                     @Override
