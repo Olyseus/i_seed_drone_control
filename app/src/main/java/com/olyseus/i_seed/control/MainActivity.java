@@ -492,8 +492,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (pipeline() == null) {
             RemoteController remoteController = aircraft.get().getRemoteController();
             if (remoteController == null) {
-                Log.e(TAG, "No remote controller");
                 updateState(State.WAIT_RC);
+                Log.e(TAG, "No remote controller, sleep 5 seconds");
+                sleep(5);
                 return;
             }
 
