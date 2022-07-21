@@ -56,6 +56,7 @@ import dji.common.error.DJISDKError;
 import dji.common.flightcontroller.BatteryThresholdBehavior;
 import dji.common.flightcontroller.FlightControllerState;
 import dji.common.flightcontroller.GPSSignalLevel;
+import dji.common.model.LocationCoordinate2D;
 import dji.common.remotecontroller.RCMode;
 import dji.common.util.CommonCallbacks;
 import dji.mop.common.PipelineError;
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static boolean useBridge = false;
     private AtomicReference<Aircraft> aircraft = new AtomicReference<Aircraft>(null);
     Marker droneMarker = null;
+    Marker homeMarker = null;
     private Object pinCoordinatesMutex = new Object();
     Marker pinPoint = null;
     private double pinLongitude = 0.0;
@@ -127,6 +129,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
     private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
+    private AtomicReference<LocationCoordinate2D> homeLocation = new AtomicReference<LocationCoordinate2D>(null);
     private AtomicReference<RCMode> latestRcMode = new AtomicReference<RCMode>(null);
 
     private static final String[] REQUIRED_PERMISSION_LIST = new String[]{
@@ -339,7 +342,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void homeButtonClicked() {
-        zoomToDrone();
+        if (droneMarker != null) {
+            zoomToPosition(droneMarker.getPosition());
+        } else if (homeMarker != null) {
+            zoomToPosition(homeMarker.getPosition());
+        }
     }
 
     // UI thread
@@ -488,6 +495,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             updateState(State.LOW_BATTERY);
             return;
         }
+
+        homeLocation.set(flightState.getHomeLocation());
 
         if (pipeline() == null) {
             RemoteController remoteController = aircraft.get().getRemoteController();
@@ -874,6 +883,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         updateDroneCoordinates();
+        updateHomeMarker();
     }
 
     private int getDroneButtonColor() {
@@ -1099,15 +1109,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    private void zoomToDrone() {
+    private void zoomToPosition(LatLng position) {
         if (gMap == null) {
             return;
         }
-        if (droneMarker == null) {
-            return;
-        }
         float zoomLevel = 18.0F;
-        CameraUpdate cu = CameraUpdateFactory.newLatLngZoom(droneMarker.getPosition(), zoomLevel);
+        CameraUpdate cu = CameraUpdateFactory.newLatLngZoom(position, zoomLevel);
         gMap.animateCamera(cu);
     }
 
@@ -1154,7 +1161,44 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.flat(true);
         droneMarker = gMap.addMarker(markerOptions);
         updateTripLine();
-        zoomToDrone();
+        zoomToPosition(droneMarker.getPosition());
+    }
+
+    // UI thread
+    public void updateHomeMarker() {
+        if (gMap == null) {
+            return;
+        }
+        LocationCoordinate2D location = homeLocation.get();
+        if (location == null) {
+            return;
+        }
+        if (location.getLongitude() == 0.0 && location.getLatitude() == 0.0) {
+            if (homeMarker != null) {
+                homeMarker.remove();
+                homeMarker = null;
+            }
+            return;
+        }
+
+        LatLng pos = new LatLng(location.getLatitude(), location.getLongitude());
+
+        if (homeMarker == null) {
+            MarkerOptions markerOptions = new MarkerOptions();
+            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.helicopter_landing_icon_24px);
+            Bitmap resizedBitmap = Bitmap.createScaledBitmap(bitmap, 40, 40, false);
+            markerOptions.icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap));
+            markerOptions.position(pos);
+            markerOptions.rotation(0.0F);
+            markerOptions.anchor(0.5F, 0.5F);
+            markerOptions.flat(true);
+            homeMarker = gMap.addMarker(markerOptions);
+            if (droneMarker == null) {
+                zoomToPosition(homeMarker.getPosition());
+            }
+        } else {
+            homeMarker.setPosition(pos);
+        }
     }
 
     @Override
@@ -1162,6 +1206,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (gMap == null) {
             gMap = googleMap;
             gMap.setOnMapClickListener(this);
+            gMap.setOnMarkerClickListener(marker -> true);
         }
     }
 }
