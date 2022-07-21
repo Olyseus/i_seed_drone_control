@@ -1062,7 +1062,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onSuccess(Boolean aBoolean) {
                     Log.i(TAG, "Laser is ON: " + aBoolean);
-                    assert(aBoolean == true);
+                    // aBoolean can be true/false
                     laserStatus.setEnabled(true);
                     setupMeasurementCallback(camera);
                 }
