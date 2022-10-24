@@ -35,6 +35,9 @@ jobs:
     - name: Check release key
       run: openssl sha1 /home/runner/release_key.jks
 
+    - name: Create keystore properties
+      run: echo -n "${{ secrets.OLYSEUS_KEYSTORE_PROPERTIES }}" > keystore.properties
+
     - name: Make Gradle executable
       run: chmod +x ./gradlew
 
