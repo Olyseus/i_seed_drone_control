@@ -25,7 +25,6 @@ jobs:
 
     - uses: actions/setup-java@v3
       with:
-        distribution: '<distribution>'
         java-version: '11'
 
     - name: Make Gradle executable
