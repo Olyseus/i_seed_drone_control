@@ -23,6 +23,9 @@ jobs:
         ssh-key: ${{ secrets.OLYSEUS_BOT_SSH_PRIVATE_KEY }}
         submodules: true
 
+    - name: Make Gradle executable
+      run: chmod +x ./gradlew
+
     - name: Build APK
       run: ./gradlew assembleRelease
 
