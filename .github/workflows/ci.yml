@@ -26,6 +26,8 @@ jobs:
     - uses: actions/setup-java@v3
       with:
         java-version: '11'
+        distribution: 'microsoft'
+        cache: 'gradle'
 
     - name: Make Gradle executable
       run: chmod +x ./gradlew
