@@ -23,6 +23,12 @@ jobs:
         ssh-key: ${{ secrets.OLYSEUS_BOT_SSH_PRIVATE_KEY }}
         submodules: true
 
+    - name: Install Java
+      run: |
+        sudo apt -y update
+        sudo apt install -y default-jre
+        sudo apt install -y default-jdk
+
     - name: Make Gradle executable
       run: chmod +x ./gradlew
 
