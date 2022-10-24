@@ -29,6 +29,12 @@ jobs:
         distribution: 'microsoft'
         cache: 'gradle'
 
+    - name: Decode release key
+      run: echo -n "${{ secrets.OLYSEUS_RELEASE_KEY_JKS_BASE64 }}" | base64 --decode > /home/runner/release_key.jks
+
+    - name: Check release key
+      run: openssl sha1 /home/runner/release_key.jks
+
     - name: Make Gradle executable
       run: chmod +x ./gradlew
 
