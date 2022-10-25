@@ -41,6 +41,12 @@ android {
         }
     }
 
+    bundle {
+        storeArchive {
+            enable = false
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
