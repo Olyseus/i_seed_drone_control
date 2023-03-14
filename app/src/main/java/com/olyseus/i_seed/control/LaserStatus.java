@@ -10,6 +10,13 @@ public class LaserStatus {
     private String laserStatus = statusNA;
     private boolean enabled = false;
     private Object mutex = new Object();
+    private boolean hasLatestValue = false;
+    private float latestValue = 0.0F;
+    private boolean mockDrone = false;
+
+    public LaserStatus(boolean mock) {
+        mockDrone = mock;
+    }
 
     public void setEnabled(boolean enable) {
         synchronized (mutex) {
@@ -27,6 +34,26 @@ public class LaserStatus {
     public String getLaserStatus() {
         synchronized (mutex) {
             return laserStatus;
+        }
+    }
+
+    public boolean hasValue() {
+        if (mockDrone) {
+            return true;
+        }
+        synchronized (mutex) {
+            return hasLatestValue;
+        }
+    }
+
+    public float getValue() {
+        if (mockDrone) {
+            return 15.0F;
+        }
+        synchronized (mutex) {
+            assert(hasLatestValue);
+            hasLatestValue = false;
+            return latestValue;
         }
     }
 
@@ -52,6 +79,8 @@ public class LaserStatus {
                 laserStatus = statusNA;
                 return;
             }
+            hasLatestValue = true;
+            latestValue = targetDistance;
             laserStatus = String.format("%.1f", targetDistance);
         }
     }
