@@ -84,6 +84,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
     private static boolean useBridge = false;
+    private static boolean mockDrone = false;
     private AtomicReference<Aircraft> aircraft = new AtomicReference<Aircraft>(null);
     Marker droneMarker = null;
     Marker homeMarker = null;
@@ -104,7 +105,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private float droneHeading = 0.0F;
     private boolean appOnPause = false;
     private boolean waitForPingReceived = false;
-    LaserStatus laserStatus = new LaserStatus();
+    LaserStatus laserStatus = new LaserStatus(mockDrone);
     PipelineStatus pipelineStatus = new PipelineStatus();
 
     enum State {
@@ -286,6 +287,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 assert(!fromDrone);
                 synchronized (executeCommandsMutex) {
                     executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
+                    if (mockDrone) {
+                        executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
+                    }
                 }
                 break;
             case PAUSED:
@@ -466,6 +470,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         if (gMap == null) {
             updateState(State.MAP_NOT_READY);
+            return;
+        }
+
+        if (mockDrone) {
+            // Paris
+            homeLocation.set(new LocationCoordinate2D(48.847344150212244, 2.38680388210137));
+
+            droneLatitude = 48.8473;
+            droneLongitude = 2.3868;
+            droneHeading = 0.0F;
+
+            updateState(State.ONLINE);
             return;
         }
 
@@ -736,6 +752,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Log.i(TAG, "Mission finished");
                     updateMissionStatus(Mission.STOPPED, true);
                     break;
+                case LASER_RANGE:
+                    Log.i(TAG, "Laser range request received");
+                    synchronized (executeCommandsMutex) {
+                        executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
+                    }
+                    break;
                 default:
                     assert(false);
             }
@@ -750,7 +772,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (appOnPause) {
             return;
         }
-        if (pipeline() == null) {
+        if (pipeline() == null && !mockDrone) {
             synchronized (executeCommandsMutex) {
                 if (executeCommands.size() > 0) {
                     Log.w(TAG, "Number of commands in queue: " + executeCommands.size());
@@ -779,6 +801,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private boolean writePipeData(byte[] bytesToSend) {
+        if (mockDrone) {
+            return true;
+        }
         while (true) {
             if (!pipelineStatus.isConnected()) {
                 sleep(5);
@@ -824,7 +849,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case PING:
                 Log.i(TAG, "Execute command PING");
                 return writeCommandToPipe(Interconnection.command_type.command_t.PING);
-            case MISSION_START:
+            case MISSION_START: {
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
                     return false;
                 }
@@ -835,12 +860,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 builder.setLongitude(pinLongitude);
                 byte[] bytesToSend = builder.build().toByteArray();
                 return writePipeData(bytesToSend);
+            }
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
                 return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
                 return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
+            case LASER_RANGE: {
+                if (!laserStatus.hasValue()) {
+                    Log.i(TAG, "No laser data to send");
+                    return false;
+                }
+                float laserRange = laserStatus.getValue();
+                Log.i(TAG, "Sending laser range: " + laserRange);
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.LASER_RANGE)) {
+                    return false;
+                }
+                Interconnection.laser_range.Builder builder = Interconnection.laser_range.newBuilder();
+                builder.setRange(laserRange);
+                byte[] bytesToSend = builder.build().toByteArray();
+                return writePipeData(bytesToSend);
+            }
             default:
                 assert(false);
         }
@@ -856,7 +897,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         droneStatus.setTextColor(getResources().getColor(buttonColor));
 
         Button laserStatusButton = findViewById(R.id.laserStatus);
-        laserStatusButton.setText("Laser: " + laserStatus.getLaserStatus());
+        laserStatusButton.setText("Laser: " + (mockDrone ? "(mock)" : laserStatus.getLaserStatus()));
 
         ImageButton cancelButton = findViewById(R.id.cancelButton);
         if ((mission_status.get() != Mission.STOPPED) || (pinPoint != null)) {
