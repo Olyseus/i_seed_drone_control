@@ -236,6 +236,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         pollExecutor.scheduleAtFixedRate(pollRunnable, 0, 200, TimeUnit.MILLISECONDS);
         readPipelineExecutor.scheduleAtFixedRate(readPipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
+
+        if (mockDrone) {
+            setDroneState(Interconnection.drone_coordinates.state_t.READY);
+        }
     }
 
     @Override
@@ -418,6 +422,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         synchronized (droneCoordinatesAndStateMutex) {
             if (droneState != Interconnection.drone_coordinates.state_t.READY) {
+                Log.w(TAG, "Map clicked but drone is not ready");
                 return;
             }
         }
