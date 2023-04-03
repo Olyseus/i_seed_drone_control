@@ -99,10 +99,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private int droneCoordinatesByteLength = 0;
     private static int protocolVersion = 8; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
-    private Object droneCoordinatesMutex = new Object();
+    private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
+    private Interconnection.drone_coordinates.state_t droneState = Interconnection.drone_coordinates.state_t.WAITING;
     private boolean appOnPause = false;
     private boolean waitForPingReceived = false;
     LaserStatus laserStatus = new LaserStatus(mockDrone);
@@ -122,14 +123,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         ONLINE
     }
 
-    enum Mission {
-        STOPPED,
-        IN_PROGRESS,
-        PAUSED
-    }
-
     private AtomicReference<State> state = new AtomicReference<State>(State.NO_PERMISSIONS);
-    private AtomicReference<Mission> mission_status = new AtomicReference<Mission>(Mission.STOPPED);
     private AtomicReference<LocationCoordinate2D> homeLocation = new AtomicReference<LocationCoordinate2D>(null);
     private AtomicReference<RCMode> latestRcMode = new AtomicReference<RCMode>(null);
 
@@ -188,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         builder2.setLatitude(0.0);
         builder2.setLongitude(0.0);
         builder2.setHeading(0.0F);
+        builder2.setState(Interconnection.drone_coordinates.state_t.WAITING);
         droneCoordinatesByteLength = builder2.build().toByteArray().length;
         assert (droneCoordinatesByteLength > 0);
 
@@ -267,53 +262,41 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         disconnect();
     }
 
-    // UI thread
-    // read pipe thread
-    private void updateMissionStatus(Mission newMissionStatus, boolean fromDrone) {
-        switch (newMissionStatus) {
-            case STOPPED:
-                assert(mission_status.get() != Mission.STOPPED);
-                if (fromDrone) {
-                    // Mission finished
-                } else {
-                    // Aborting mission
-                    synchronized (executeCommandsMutex) {
-                        executeCommands.add(Interconnection.command_type.command_t.MISSION_ABORT);
-                    }
-                }
-                break;
-            case IN_PROGRESS:
-                assert(mission_status.get() != Mission.IN_PROGRESS);
-                assert(!fromDrone);
-                synchronized (executeCommandsMutex) {
-                    executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
-                    if (mockDrone) {
-                        executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
-                    }
-                }
-                break;
-            case PAUSED:
-                assert(mission_status.get() == Mission.IN_PROGRESS);
-                assert(!fromDrone);
-                synchronized (executeCommandsMutex) {
-                    executeCommands.add(Interconnection.command_type.command_t.MISSION_PAUSE);
-                }
-                break;
-        }
-        mission_status.set(newMissionStatus);
+    private void setDroneState(Interconnection.drone_coordinates.state_t newDroneState) {
+        droneState = newDroneState;
         handler.sendEmptyMessage(0);
     }
 
     // UI thread
     private void actionButtonClicked() {
-        if (mission_status.get() == Mission.PAUSED) {
-            updateMissionStatus(Mission.IN_PROGRESS, false);
-            return;
+        synchronized (droneCoordinatesAndStateMutex) {
+            switch (droneState) {
+                case READY:
+                    Log.d(TAG, "User action: try start mission");
+                    break;
+                case WAITING:
+                    Log.w(TAG, "Action button clicked on WAITING state");
+                    return;
+                case PAUSED:
+                    Log.d(TAG, "User action: continue mission");
+                    setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                    synchronized (executeCommandsMutex) {
+                        executeCommands.add(Interconnection.command_type.command_t.MISSION_CONTINUE);
+                    }
+                    return;
+                case EXECUTING:
+                    Log.d(TAG, "User action: pause mission");
+                    setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                    synchronized (executeCommandsMutex) {
+                        executeCommands.add(Interconnection.command_type.command_t.MISSION_PAUSE);
+                    }
+                    return;
+                default:
+                    assert(false);
+                    break;
+            }
         }
-        if (mission_status.get() == Mission.IN_PROGRESS) {
-            updateMissionStatus(Mission.PAUSED, false);
-            return;
-        }
+
         if (state.get() != State.ONLINE) {
             new MaterialAlertDialogBuilder(this).setMessage("The drone is not online").setPositiveButton("Ok", null).show();
             return;
@@ -336,7 +319,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        updateMissionStatus(Mission.IN_PROGRESS, false);
+                        Log.d(TAG, "User action: start mission");
+                        synchronized (droneCoordinatesAndStateMutex) {
+                            setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                        }
+                        synchronized (executeCommandsMutex) {
+                            executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
+                            if (mockDrone) {
+                                executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
+                            }
+                        }
                     }
                 })
                 .setNegativeButton("No", null)
@@ -353,13 +345,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // UI thread
     private void cancelButtonClicked() {
-        if (mission_status.get() != Mission.STOPPED) {
+        boolean canBeStopped;
+        synchronized (droneCoordinatesAndStateMutex) {
+            canBeStopped =
+                droneState == Interconnection.drone_coordinates.state_t.PAUSED ||
+                droneState == Interconnection.drone_coordinates.state_t.EXECUTING;
+        }
+
+        if (canBeStopped) {
             new MaterialAlertDialogBuilder(this)
                     .setMessage("Are you sure you want to abort this mission?")
                     .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            updateMissionStatus(Mission.STOPPED, false);
+                            Log.d(TAG, "User action: abort mission");
+                            synchronized (droneCoordinatesAndStateMutex) {
+                                setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                            }
+                            synchronized (executeCommandsMutex) {
+                                executeCommands.add(Interconnection.command_type.command_t.MISSION_ABORT);
+                            }
                         }
                     })
                     .setNegativeButton("No", null)
@@ -367,7 +372,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        assert(pinPoint != null);
+        if (pinPoint == null) {
+            return;
+        }
+
         new MaterialAlertDialogBuilder(this)
                 .setMessage("Are you sure you want to remove the pin?")
                 .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
@@ -408,8 +416,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (droneMarker == null) {
             return;
         }
-        if (mission_status.get() != Mission.STOPPED) {
-            return;
+        synchronized (droneCoordinatesAndStateMutex) {
+            if (droneState != Interconnection.drone_coordinates.state_t.READY) {
+                return;
+            }
         }
         if (pinPoint == null) {
             MarkerOptions markerOptions = new MarkerOptions();
@@ -740,17 +750,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         return;
                     }
                     Interconnection.drone_coordinates coordinates = Interconnection.drone_coordinates.parseFrom(crdBuffer);
-                    Log.d(TAG, "Drone coordinates received");
-                    synchronized (droneCoordinatesMutex) {
+                    Log.d(TAG, "Drone coordinates and state received");
+                    synchronized (droneCoordinatesAndStateMutex) {
                         droneLatitude = coordinates.getLatitude();
                         droneLongitude = coordinates.getLongitude();
                         droneHeading = coordinates.getHeading();
+                        droneState = coordinates.getState();
                     }
                     handler.sendEmptyMessage(0);
-                    break;
-                case MISSION_FINISHED:
-                    Log.i(TAG, "Mission finished");
-                    updateMissionStatus(Mission.STOPPED, true);
                     break;
                 case LASER_RANGE:
                     Log.i(TAG, "Laser range request received");
@@ -864,6 +871,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
                 return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
+            case MISSION_CONTINUE:
+                Log.i(TAG, "Execute command MISSION_CONTINUE");
+                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_CONTINUE);
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
                 return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
@@ -900,25 +910,37 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         laserStatusButton.setText("Laser: " + (mockDrone ? "(mock)" : laserStatus.getLaserStatus()));
 
         ImageButton cancelButton = findViewById(R.id.cancelButton);
-        if ((mission_status.get() != Mission.STOPPED) || (pinPoint != null)) {
-            cancelButton.setVisibility(View.VISIBLE);
-        } else {
-            cancelButton.setVisibility(View.GONE);
-        }
-
         Button actionButton = (Button) findViewById(R.id.actionButton);
-        switch (mission_status.get()) {
-            case STOPPED:
-                actionButton.setText("Start");
-                break;
-            case PAUSED:
-                actionButton.setText("Continue");
-                break;
-            case IN_PROGRESS:
-                actionButton.setText("Pause");
-                break;
-            default:
-                assert(false);
+
+        synchronized (droneCoordinatesAndStateMutex) {
+            switch (droneState) {
+                case READY:
+                    if (pinPoint == null) {
+                        cancelButton.setClickable(false);
+                    } else {
+                        cancelButton.setClickable(true);
+                    }
+                    actionButton.setText("Start");
+                    actionButton.setClickable(true);
+                    break;
+                case WAITING:
+                    cancelButton.setClickable(false);
+                    actionButton.setClickable(false);
+                    break;
+                case PAUSED:
+                    cancelButton.setClickable(true);
+                    actionButton.setText("Continue");
+                    actionButton.setClickable(true);
+                    break;
+                case EXECUTING:
+                    cancelButton.setClickable(true);
+                    actionButton.setText("Pause");
+                    actionButton.setClickable(true);
+                    break;
+                default:
+                    assert (false);
+                    break;
+            }
         }
 
         updateDroneCoordinates();
@@ -1171,7 +1193,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double longitude = 0.0;
         float heading = 0.0F;
 
-        synchronized (droneCoordinatesMutex) {
+        synchronized (droneCoordinatesAndStateMutex) {
             latitude = droneLatitude;
             longitude = droneLongitude;
             heading = droneHeading;
