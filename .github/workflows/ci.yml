@@ -15,10 +15,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         ssh-key: ${{ secrets.OLYSEUS_BOT_SSH_PRIVATE_KEY }}
         submodules: true
