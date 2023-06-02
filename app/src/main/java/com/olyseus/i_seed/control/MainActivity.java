@@ -350,10 +350,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // UI thread
     private void cancelButtonClicked() {
         boolean canBeStopped;
+        boolean isWaiting = false;
         synchronized (droneCoordinatesAndStateMutex) {
             canBeStopped =
                 droneState == Interconnection.drone_coordinates.state_t.PAUSED ||
                 droneState == Interconnection.drone_coordinates.state_t.EXECUTING;
+            isWaiting = (droneState == Interconnection.drone_coordinates.state_t.WAITING);
         }
 
         if (canBeStopped) {
@@ -377,6 +379,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         if (pinPoint == null) {
+            return;
+        }
+
+        if (isWaiting) {
+            new MaterialAlertDialogBuilder(this).setMessage("Waiting for a drone state").setPositiveButton("Ok", null).show();
             return;
         }
 
