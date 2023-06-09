@@ -95,9 +95,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     Polyline tripLine = null;
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
-    private int commandByteLength = 0;
-    private int droneCoordinatesByteLength = 0;
-    private static int protocolVersion = 11; // Keep it consistent with Onboard SDK
+    private int packetSize = 0;
+    private static int protocolVersion = 12; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
@@ -172,19 +171,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
-        Interconnection.command_type.Builder builder1 = Interconnection.command_type.newBuilder();
-        builder1.setVersion(protocolVersion);
-        builder1.setType(Interconnection.command_type.command_t.PING);
-        commandByteLength = builder1.build().toByteArray().length;
-        assert (commandByteLength > 0);
-
-        Interconnection.drone_coordinates.Builder builder2 = Interconnection.drone_coordinates.newBuilder();
-        builder2.setLatitude(0.0);
-        builder2.setLongitude(0.0);
-        builder2.setHeading(0.0F);
-        builder2.setState(Interconnection.drone_coordinates.state_t.WAITING);
-        droneCoordinatesByteLength = builder2.build().toByteArray().length;
-        assert (droneCoordinatesByteLength > 0);
+        Interconnection.packet_size.Builder builder = Interconnection.packet_size.newBuilder();
+        builder.setSize(0);
+        packetSize = builder.build().toByteArray().length;
+        assert (packetSize > 0);
 
         updateUIState(); // Init
 
@@ -729,18 +719,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return buffer;
     }
 
+    private int readSizeFromPipe() throws InvalidProtocolBufferException {
+        byte[] buffer = readPipeData(packetSize);
+        if (buffer == null) {
+            return 0;
+        }
+        Interconnection.packet_size p_size = Interconnection.packet_size.parseFrom(buffer);
+        return p_size.getSize();
+    }
+
     // read pipe thread
     private void readPipelineJob() {
         if (appOnPause) {
             return;
         }
 
-        byte[] buffer = readPipeData(commandByteLength);
-        if (buffer == null) {
-            return;
-        }
-
         try {
+            int buffer_size = readSizeFromPipe();
+            if (buffer_size == 0) {
+                return;
+            }
+            byte[] buffer = readPipeData(buffer_size);
+            if (buffer == null) {
+                return;
+            }
+
             Interconnection.command_type command = Interconnection.command_type.parseFrom(buffer);
             if (command.getVersion() != protocolVersion) {
                 if (command.getVersion() > protocolVersion) {
@@ -757,7 +760,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     waitForPingReceived = false;
                     break;
                 case DRONE_COORDINATES:
-                    byte[] crdBuffer = readPipeData(droneCoordinatesByteLength);
+                    buffer_size = readSizeFromPipe();
+                    if (buffer_size == 0) {
+                        return;
+                    }
+                    byte[] crdBuffer = readPipeData(buffer_size);
                     if (crdBuffer == null) {
                         return;
                     }
@@ -858,7 +865,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         builder.setVersion(protocolVersion);
         builder.setType(command);
         byte[] bytesToSend = builder.build().toByteArray();
-        assert(bytesToSend.length == commandByteLength);
+        if (!writeSizeToPipe(bytesToSend.length)) {
+            return false;
+        }
+        return writePipeData(bytesToSend);
+    }
+
+    private boolean writeSizeToPipe(int size) {
+        Interconnection.packet_size.Builder builder = Interconnection.packet_size.newBuilder();
+        builder.setSize(size);
+        byte[] bytesToSend = builder.build().toByteArray();
+        assert(bytesToSend.length == packetSize);
         return writePipeData(bytesToSend);
     }
 
@@ -878,6 +895,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 builder.setLatitude(pinLatitude);
                 builder.setLongitude(pinLongitude);
                 byte[] bytesToSend = builder.build().toByteArray();
+                if (!writeSizeToPipe(bytesToSend.length)) {
+                    return false;
+                }
                 return writePipeData(bytesToSend);
             }
             case MISSION_PAUSE:
@@ -902,6 +922,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Interconnection.laser_range.Builder builder = Interconnection.laser_range.newBuilder();
                 builder.setRange(laserRange);
                 byte[] bytesToSend = builder.build().toByteArray();
+                if (!writeSizeToPipe(bytesToSend.length)) {
+                    return false;
+                }
                 return writePipeData(bytesToSend);
             }
             default:
