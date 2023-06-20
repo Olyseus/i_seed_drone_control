@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
-    private static int protocolVersion = 12; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 13; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
@@ -107,6 +107,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean waitForPingReceived = false;
     LaserStatus laserStatus = new LaserStatus(mockDrone);
     PipelineStatus pipelineStatus = new PipelineStatus();
+    static private int invalid_event_id = -1;
+    private int event_id = invalid_event_id;
 
     enum State {
         NO_PERMISSIONS,
@@ -572,6 +574,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     assert(pipeline() != null);
                     pipelineStatus.setConnected(true);
                     waitForPingReceived = true;
+                    event_id = invalid_event_id;
                     synchronized (executeCommandsMutex) {
                         if (!executeCommands.contains(Interconnection.command_type.command_t.PING)) {
                             executeCommands.add(Interconnection.command_type.command_t.PING);
@@ -770,11 +773,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
                     Interconnection.drone_coordinates coordinates = Interconnection.drone_coordinates.parseFrom(crdBuffer);
                     Log.d(TAG, "Drone coordinates and state received");
-                    synchronized (droneCoordinatesAndStateMutex) {
-                        droneLatitude = coordinates.getLatitude();
-                        droneLongitude = coordinates.getLongitude();
-                        droneHeading = coordinates.getHeading();
-                        droneState = coordinates.getState();
+                    if (event_id == invalid_event_id) {
+                        event_id = coordinates.getEventId();
+                        assert(event_id != invalid_event_id);
+                        assert(event_id >= 0);
+                    }
+                    if (event_id > coordinates.getEventId()) {
+                        Log.d(TAG, "Ignore stale drone state");
+                        assert(event_id == coordinates.getEventId() + 1);
+                    } else {
+                        assert(event_id == coordinates.getEventId());
+                        synchronized (droneCoordinatesAndStateMutex) {
+                            droneLatitude = coordinates.getLatitude();
+                            droneLongitude = coordinates.getLongitude();
+                            droneHeading = coordinates.getHeading();
+                            droneState = coordinates.getState();
+                        }
                     }
                     handler.sendEmptyMessage(0);
                     break;
@@ -860,6 +874,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    private boolean writeEventIdToPipe() {
+        assert(event_id != invalid_event_id);
+        event_id++;
+        Interconnection.event_id_message.Builder builder = Interconnection.event_id_message.newBuilder();
+        builder.setEventId(event_id);
+        byte[] bytesToSend = builder.build().toByteArray();
+        if (!writeSizeToPipe(bytesToSend.length)) {
+            return false;
+        }
+        return writePipeData(bytesToSend);
+    }
+
     private boolean writeCommandToPipe(Interconnection.command_type.command_t command) {
         Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
         builder.setVersion(protocolVersion);
@@ -894,6 +920,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Interconnection.pin_coordinates.Builder builder = Interconnection.pin_coordinates.newBuilder();
                 builder.setLatitude(pinLatitude);
                 builder.setLongitude(pinLongitude);
+                assert(event_id != invalid_event_id);
+                event_id++;
+                builder.setEventId(event_id);
                 byte[] bytesToSend = builder.build().toByteArray();
                 if (!writeSizeToPipe(bytesToSend.length)) {
                     return false;
@@ -902,13 +931,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
-                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE);
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE)) {
+                    return false;
+                }
+                return writeEventIdToPipe();
             case MISSION_CONTINUE:
                 Log.i(TAG, "Execute command MISSION_CONTINUE");
-                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_CONTINUE);
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_CONTINUE)) {
+                    return false;
+                }
+                return writeEventIdToPipe();
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
-                return writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT);
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT)) {
+                    return false;
+                }
+                return writeEventIdToPipe();
             case LASER_RANGE: {
                 if (!laserStatus.hasValue()) {
                     Log.i(TAG, "No laser data to send");
