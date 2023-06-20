@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
-    private static int protocolVersion = 13; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 14; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private float droneHeading = 0.0F;
     private Interconnection.drone_coordinates.state_t droneState = Interconnection.drone_coordinates.state_t.WAITING;
     private boolean appOnPause = false;
-    private boolean waitForPingReceived = false;
+    private boolean waitForPongReceived = false;
     LaserStatus laserStatus = new LaserStatus(mockDrone);
     PipelineStatus pipelineStatus = new PipelineStatus();
     static private int invalid_event_id = -1;
@@ -573,7 +573,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Log.i(TAG, "Pipeline connected");
                     assert(pipeline() != null);
                     pipelineStatus.setConnected(true);
-                    waitForPingReceived = true;
+                    waitForPongReceived = true;
                     event_id = invalid_event_id;
                     synchronized (executeCommandsMutex) {
                         if (!executeCommands.contains(Interconnection.command_type.command_t.PING)) {
@@ -602,7 +602,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (waitForPingReceived) {
+        if (waitForPongReceived) {
             updateState(State.CONNECTING);
             return;
         }
@@ -758,9 +758,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return;
             }
             switch (command.getType()) {
-                case PING:
-                    Log.i(TAG, "PING received");
-                    waitForPingReceived = false;
+                case PONG:
+                    Log.i(TAG, "PONG received");
+                    waitForPongReceived = false;
                     break;
                 case DRONE_COORDINATES:
                     buffer_size = readSizeFromPipe();
@@ -1157,7 +1157,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         assert (aircraft.get() != null);
                         laserStatus.setEnabled(false);
                         pipelineStatus.setConnected(false);
-                        waitForPingReceived = false;
+                        waitForPongReceived = false;
                         latestRcMode.set(null);
                     }
 
