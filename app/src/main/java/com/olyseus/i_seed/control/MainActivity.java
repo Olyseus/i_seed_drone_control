@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
-    private static int protocolVersion = 14; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 15; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
