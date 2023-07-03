@@ -16,6 +16,7 @@ import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,6 +29,7 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.Dash;
 import com.google.android.gms.maps.model.Gap;
@@ -88,11 +90,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private AtomicReference<Aircraft> aircraft = new AtomicReference<Aircraft>(null);
     Marker droneMarker = null;
     Marker homeMarker = null;
-    private Object pinCoordinatesMutex = new Object();
-    Marker pinPoint = null;
-    private double pinLongitude = 0.0;
-    private double pinLatitude = 0.0;
-    Polyline tripLine = null;
+    InputPolygon inputPolygon = new InputPolygon();
+    MissionPath missionPath = new MissionPath();
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
@@ -102,7 +101,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private double droneLongitude = 0.0;
     private double droneLatitude = 0.0;
     private float droneHeading = 0.0F;
-    private Interconnection.drone_coordinates.state_t droneState = Interconnection.drone_coordinates.state_t.WAITING;
+    private Interconnection.drone_info.state_t droneState = Interconnection.drone_info.state_t.WAITING;
     private boolean appOnPause = false;
     private boolean waitForPongReceived = false;
     LaserStatus laserStatus = new LaserStatus(mockDrone);
@@ -143,6 +142,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     };
     private List<String> missingPermission = new ArrayList<>();
     private static final int REQUEST_PERMISSION_CODE = 4934; // Just a random number
+
+    public static final int PATTERN_DASH_LENGTH_PX = 10;
+    public static final int PATTERN_GAP_LENGTH_PX = 10;
+    public static final PatternItem DASH = new Dash(PATTERN_DASH_LENGTH_PX);
+    public static final PatternItem GAP = new Gap(PATTERN_GAP_LENGTH_PX);
+    public static final List<PatternItem> POLYGON_PATTERN = Arrays.asList(GAP, DASH);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -230,7 +235,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
 
         if (mockDrone) {
-            setDroneState(Interconnection.drone_coordinates.state_t.READY);
+            setDroneState(Interconnection.drone_info.state_t.READY);
         }
     }
 
@@ -258,7 +263,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         disconnect();
     }
 
-    private void setDroneState(Interconnection.drone_coordinates.state_t newDroneState) {
+    private void setDroneState(Interconnection.drone_info.state_t newDroneState) {
         droneState = newDroneState;
         handler.sendEmptyMessage(0);
     }
@@ -268,25 +273,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         synchronized (droneCoordinatesAndStateMutex) {
             switch (droneState) {
                 case READY:
-                    Log.d(TAG, "User action: try start mission");
+                    if (inputPolygon.size() > 2) {
+                        Log.d(TAG, "User action: build mission");
+                        setDroneState(Interconnection.drone_info.state_t.WAITING);
+                        synchronized (executeCommandsMutex) {
+                            executeCommands.add(Interconnection.command_type.command_t.BUILD_MISSION);
+                        }
+                        return;
+                    }
+                    Log.d(TAG, "User action: no polygon");
                     break;
                 case WAITING:
+                case PATH_DATA:
                     Log.w(TAG, "Action button clicked on WAITING state");
                     return;
                 case PAUSED:
                     Log.d(TAG, "User action: continue mission");
-                    setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                    setDroneState(Interconnection.drone_info.state_t.WAITING);
                     synchronized (executeCommandsMutex) {
                         executeCommands.add(Interconnection.command_type.command_t.MISSION_CONTINUE);
                     }
                     return;
                 case EXECUTING:
                     Log.d(TAG, "User action: pause mission");
-                    setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                    setDroneState(Interconnection.drone_info.state_t.WAITING);
                     synchronized (executeCommandsMutex) {
                         executeCommands.add(Interconnection.command_type.command_t.MISSION_PAUSE);
                     }
                     return;
+                case PATH:
+                    Log.d(TAG, "User action: mission start");
+                    assert(inputPolygon.size() > 2);
+                    assert(!missionPath.isEmpty());
+                    break;
                 default:
                     assert(false);
                     break;
@@ -305,8 +324,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             new MaterialAlertDialogBuilder(this).setMessage("Please wait for a drone coordinates").setPositiveButton("Ok", null).show();
             return;
         }
-        if (pinPoint == null) {
-            new MaterialAlertDialogBuilder(this).setMessage("Please drop a pin to start").setPositiveButton("Ok", null).show();
+        if (inputPolygon.isEmpty()) {
+            new MaterialAlertDialogBuilder(this).setMessage("Please provide input mission polygon to start").setPositiveButton("Ok", null).show();
+            return;
+        }
+        if (inputPolygon.size() <= 2) {
+            new MaterialAlertDialogBuilder(this).setMessage("Please provide more input polygon vertices").setPositiveButton("Ok", null).show();
             return;
         }
 
@@ -317,12 +340,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onClick(DialogInterface dialog, int which) {
                         Log.d(TAG, "User action: start mission");
                         synchronized (droneCoordinatesAndStateMutex) {
-                            setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                            setDroneState(Interconnection.drone_info.state_t.WAITING);
                         }
                         synchronized (executeCommandsMutex) {
                             executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
                             if (mockDrone) {
-                                executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
+                                executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE_RESPONSE);
                             }
                         }
                     }
@@ -343,11 +366,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void cancelButtonClicked() {
         boolean canBeStopped;
         boolean isWaiting = false;
+        boolean removePath = false;
+        boolean removeInputPolygon = false;
         synchronized (droneCoordinatesAndStateMutex) {
             canBeStopped =
-                droneState == Interconnection.drone_coordinates.state_t.PAUSED ||
-                droneState == Interconnection.drone_coordinates.state_t.EXECUTING;
-            isWaiting = (droneState == Interconnection.drone_coordinates.state_t.WAITING);
+                droneState == Interconnection.drone_info.state_t.PAUSED ||
+                droneState == Interconnection.drone_info.state_t.EXECUTING;
+            isWaiting =
+                droneState == Interconnection.drone_info.state_t.WAITING ||
+                droneState == Interconnection.drone_info.state_t.PATH_DATA;
+            removePath = (droneState == Interconnection.drone_info.state_t.PATH);
+            removeInputPolygon = (droneState == Interconnection.drone_info.state_t.READY);
         }
 
         if (canBeStopped) {
@@ -358,7 +387,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         public void onClick(DialogInterface dialog, int which) {
                             Log.d(TAG, "User action: abort mission");
                             synchronized (droneCoordinatesAndStateMutex) {
-                                setDroneState(Interconnection.drone_coordinates.state_t.WAITING);
+                                setDroneState(Interconnection.drone_info.state_t.WAITING);
                             }
                             synchronized (executeCommandsMutex) {
                                 executeCommands.add(Interconnection.command_type.command_t.MISSION_ABORT);
@@ -370,47 +399,35 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
 
-        if (pinPoint == null) {
+        if (removePath) {
+            new MaterialAlertDialogBuilder(this)
+                    .setMessage("Are you sure you want to clear the mission path?")
+                    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            Log.d(TAG, "User action: clear mission path");
+                            synchronized (droneCoordinatesAndStateMutex) {
+                                setDroneState(Interconnection.drone_info.state_t.WAITING);
+                            }
+                            synchronized (executeCommandsMutex) {
+                                executeCommands.add(Interconnection.command_type.command_t.MISSION_PATH_CANCEL);
+                            }
+                            missionPath.userRemove();
+                        }
+                    })
+                    .setNegativeButton("No", null)
+                    .show();
             return;
         }
 
-        if (isWaiting) {
-            new MaterialAlertDialogBuilder(this).setMessage("Waiting for a drone state").setPositiveButton("Ok", null).show();
+        if (removeInputPolygon) {
+            inputPolygon.userRemove();
+            missionPath.userRemove();
             return;
         }
 
-        new MaterialAlertDialogBuilder(this)
-                .setMessage("Are you sure you want to remove the pin?")
-                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        pinPoint.remove();
-                        pinPoint = null;
-                        updateTripLine();
-                    }
-                })
-                .setNegativeButton("No", null)
-                .show();
-    }
-
-    // Call when 'droneMarker' or 'pinPoint' changes
-    private void updateTripLine() {
-        if (droneMarker == null || pinPoint == null) {
-            if (tripLine != null) {
-                tripLine.remove();
-                tripLine = null;
-            }
-            return;
-        }
-
-        if (tripLine == null) {
-            tripLine = gMap.addPolyline(new PolylineOptions().add(droneMarker.getPosition(), pinPoint.getPosition()));
-            PatternItem DASH = new Dash(20);
-            PatternItem GAP = new Gap(20);
-            tripLine.setPattern(Arrays.asList(DASH, GAP));
-        } else {
-            tripLine.setPoints(Arrays.asList(droneMarker.getPosition(), pinPoint.getPosition()));
-        }
+        assert(isWaiting);
+        new MaterialAlertDialogBuilder(this).setMessage("Waiting for a drone state").setPositiveButton("Ok", null).show();
     }
 
     // UI thread
@@ -420,39 +437,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return;
         }
         synchronized (droneCoordinatesAndStateMutex) {
-            if (droneState != Interconnection.drone_coordinates.state_t.READY) {
+            if (droneState != Interconnection.drone_info.state_t.READY) {
                 Log.w(TAG, "Map clicked but drone is not ready");
                 return;
             }
         }
-        if (pinPoint == null) {
-            MarkerOptions markerOptions = new MarkerOptions();
-            markerOptions.position(point);
-            markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
-            pinPoint = gMap.addMarker(markerOptions);
-            synchronized (pinCoordinatesMutex) {
-                pinLongitude = pinPoint.getPosition().longitude;
-                pinLatitude = pinPoint.getPosition().latitude;
-            }
-            updateTripLine();
-            return;
-        }
 
-        new MaterialAlertDialogBuilder(this)
-                .setMessage("Are you sure you want to remove the old pin?")
-                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        pinPoint.setPosition(point);
-                        synchronized (pinCoordinatesMutex) {
-                            pinLongitude = pinPoint.getPosition().longitude;
-                            pinLatitude = pinPoint.getPosition().latitude;
-                        }
-                        updateTripLine();
-                    }
-                })
-                .setNegativeButton("No", null)
-                .show();
+        inputPolygon.add(point);
     }
 
     private void sleep(int seconds) {
@@ -732,6 +723,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // read pipe thread
+    private void readMissionPathFromPipe() throws InvalidProtocolBufferException {
+        int buffer_size = readSizeFromPipe();
+        assert(buffer_size > 0);
+
+        byte[] buffer = readPipeData(buffer_size);
+        assert(buffer != null);
+
+        Interconnection.mission_path m_path = Interconnection.mission_path.parseFrom(buffer);
+        missionPath.load(m_path);
+        if (missionPath.isEmpty()) {
+            Log.w(TAG, "Loaded mission path is empty");
+        }
+    }
+
+    // read pipe thread
     private void readPipelineJob() {
         if (appOnPause) {
             return;
@@ -762,7 +768,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Log.i(TAG, "PONG received");
                     waitForPongReceived = false;
                     break;
-                case DRONE_COORDINATES:
+                case DRONE_INFO:
                     buffer_size = readSizeFromPipe();
                     if (buffer_size == 0) {
                         return;
@@ -771,31 +777,49 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if (crdBuffer == null) {
                         return;
                     }
-                    Interconnection.drone_coordinates coordinates = Interconnection.drone_coordinates.parseFrom(crdBuffer);
+                    Interconnection.drone_info d_info = Interconnection.drone_info.parseFrom(crdBuffer);
                     Log.d(TAG, "Drone coordinates and state received");
                     if (event_id == invalid_event_id) {
-                        event_id = coordinates.getEventId();
+                        event_id = d_info.getEventId();
                         assert(event_id != invalid_event_id);
                         assert(event_id >= 0);
                     }
-                    if (event_id > coordinates.getEventId()) {
+                    boolean readMissionPath = false;
+                    boolean checkPath = false;
+                    if (event_id > d_info.getEventId()) {
                         Log.d(TAG, "Ignore stale drone state");
-                        assert(event_id == coordinates.getEventId() + 1);
+                        assert(event_id == d_info.getEventId() + 1);
                     } else {
-                        assert(event_id == coordinates.getEventId());
+                        assert(event_id == d_info.getEventId());
                         synchronized (droneCoordinatesAndStateMutex) {
-                            droneLatitude = coordinates.getLatitude();
-                            droneLongitude = coordinates.getLongitude();
-                            droneHeading = coordinates.getHeading();
-                            droneState = coordinates.getState();
+                            droneLatitude = d_info.getLatitude();
+                            droneLongitude = d_info.getLongitude();
+                            droneHeading = d_info.getHeading();
+                            droneState = d_info.getState();
+                            if (droneState == Interconnection.drone_info.state_t.PATH_DATA) {
+                                readMissionPath = true;
+                            }
+                            if (droneState == Interconnection.drone_info.state_t.PATH) {
+                                checkPath = true;
+                            }
+                        }
+                    }
+                    if (readMissionPath) {
+                        readMissionPathFromPipe();
+                    }
+                    if (checkPath && missionPath.isEmpty()) {
+                        Log.i(TAG, "State is PATH but mission path empty - emit cancel");
+                        setDroneState(Interconnection.drone_info.state_t.WAITING);
+                        synchronized (executeCommandsMutex) {
+                            executeCommands.add(Interconnection.command_type.command_t.MISSION_PATH_CANCEL);
                         }
                     }
                     handler.sendEmptyMessage(0);
                     break;
-                case LASER_RANGE:
+                case LASER_RANGE_REQUEST:
                     Log.i(TAG, "Laser range request received");
                     synchronized (executeCommandsMutex) {
-                        executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE);
+                        executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE_RESPONSE);
                     }
                     break;
                 default:
@@ -911,23 +935,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case PING:
                 Log.i(TAG, "Execute command PING");
                 return writeCommandToPipe(Interconnection.command_type.command_t.PING);
-            case MISSION_START: {
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
+            case BUILD_MISSION: {
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.BUILD_MISSION)) {
                     return false;
                 }
-                assert(pinPoint != null);
-                Log.i(TAG, "Execute command MISSION_START: lat(" + pinLatitude + ") lon(" + pinLongitude + ")");
-                Interconnection.pin_coordinates.Builder builder = Interconnection.pin_coordinates.newBuilder();
-                builder.setLatitude(pinLatitude);
-                builder.setLongitude(pinLongitude);
-                assert(event_id != invalid_event_id);
+                Interconnection.input_polygon.Builder builder = Interconnection.input_polygon.newBuilder();
+                assert (event_id != invalid_event_id);
                 event_id++;
                 builder.setEventId(event_id);
+                inputPolygon.buildVertices(builder);
+                assert(builder.getVerticesCount() > 2);
                 byte[] bytesToSend = builder.build().toByteArray();
                 if (!writeSizeToPipe(bytesToSend.length)) {
                     return false;
                 }
                 return writePipeData(bytesToSend);
+            }
+            case MISSION_PATH_CANCEL:
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PATH_CANCEL)) {
+                    return false;
+                }
+                return writeEventIdToPipe();
+            case MISSION_START: {
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
+                    return false;
+                }
+                return writeEventIdToPipe();
             }
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
@@ -947,14 +980,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 return writeEventIdToPipe();
-            case LASER_RANGE: {
+            case LASER_RANGE_RESPONSE: {
                 if (!laserStatus.hasValue()) {
                     Log.i(TAG, "No laser data to send");
                     return false;
                 }
                 float laserRange = laserStatus.getValue();
                 Log.i(TAG, "Sending laser range: " + laserRange);
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.LASER_RANGE)) {
+                if (!writeCommandToPipe(Interconnection.command_type.command_t.LASER_RANGE_RESPONSE)) {
                     return false;
                 }
                 Interconnection.laser_range.Builder builder = Interconnection.laser_range.newBuilder();
@@ -988,14 +1021,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         synchronized (droneCoordinatesAndStateMutex) {
             switch (droneState) {
                 case READY:
-                    if (pinPoint == null) {
+                    if (inputPolygon.isEmpty()) {
                         cancelButton.setClickable(false);
                     } else {
                         cancelButton.setClickable(true);
                     }
-                    actionButton.setText("Start");
+                    actionButton.setText("Build");
                     actionButton.setClickable(true);
                     break;
+                case PATH_DATA:
                 case WAITING:
                     cancelButton.setClickable(false);
                     actionButton.setClickable(false);
@@ -1010,6 +1044,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     actionButton.setText("Pause");
                     actionButton.setClickable(true);
                     break;
+                case PATH:
+                    cancelButton.setClickable(true);
+                    actionButton.setText("Start");
+                    actionButton.setClickable(true);
+                    break;
                 default:
                     assert (false);
                     break;
@@ -1018,6 +1057,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         updateDroneCoordinates();
         updateHomeMarker();
+        missionPath.draw(homeLocation.get());
     }
 
     private int getDroneButtonColor() {
@@ -1281,7 +1321,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (droneMarker != null) {
             droneMarker.setPosition(pos);
             droneMarker.setRotation(heading);
-            updateTripLine();
             return;
         }
 
@@ -1294,7 +1333,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.anchor(0.5F, 0.5F);
         markerOptions.flat(true);
         droneMarker = gMap.addMarker(markerOptions);
-        updateTripLine();
         zoomToPosition(droneMarker.getPosition());
     }
 
@@ -1335,10 +1373,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    // UI thread
     @Override
     public void onMapReady(GoogleMap googleMap) {
         if (gMap == null) {
             gMap = googleMap;
+            inputPolygon.onMapReady(this, gMap);
+            missionPath.onMapReady(this, gMap);
             gMap.setOnMapClickListener(this);
             gMap.setOnMarkerClickListener(marker -> true);
         }
