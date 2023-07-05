@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
-    private static int protocolVersion = 15; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 16; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
@@ -955,10 +955,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.BUILD_MISSION)) {
                     return false;
                 }
+                Interconnection.coordinate.Builder home_builder = Interconnection.coordinate.newBuilder();
+                home_builder.setLatitude(homeLocation.get().getLatitude());
+                home_builder.setLongitude(homeLocation.get().getLongitude());
+
                 Interconnection.input_polygon.Builder builder = Interconnection.input_polygon.newBuilder();
                 assert (event_id != invalid_event_id);
                 event_id++;
                 builder.setEventId(event_id);
+                builder.setHome(home_builder.build());
                 inputPolygon.buildVertices(builder);
                 assert(builder.getVerticesCount() > 2);
                 byte[] bytesToSend = builder.build().toByteArray();
