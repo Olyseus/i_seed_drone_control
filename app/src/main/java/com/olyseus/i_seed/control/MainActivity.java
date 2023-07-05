@@ -88,10 +88,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static boolean useBridge = false;
     private static boolean mockDrone = false;
     private AtomicReference<Aircraft> aircraft = new AtomicReference<Aircraft>(null);
-    Marker droneMarker = null;
-    Marker homeMarker = null;
+    private Marker droneMarker = null;
+    private Marker homeMarker = null;
+    private MaterialButton droneStatus = null;
+    private ImageButton cancelButton = null;
+    private Button laserStatusButton = null;
+    private Button actionButton = null;
+
     InputPolygon inputPolygon = new InputPolygon();
     MissionPath missionPath = new MissionPath();
+    MockPipelineRead mockPipelineRead = null;
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
@@ -152,10 +158,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         appOnPause = false;
+        mockPipelineRead = new MockPipelineRead(protocolVersion);
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button actionButton = (Button) findViewById(R.id.actionButton);
+        actionButton = (Button) findViewById(R.id.actionButton);
         actionButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { actionButtonClicked(); }
@@ -165,7 +172,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onClick(View v) { homeButtonClicked(); }
         });
-        ImageButton cancelButton = findViewById(R.id.cancelButton);
+        cancelButton = findViewById(R.id.cancelButton);
         cancelButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { cancelButtonClicked(); }
@@ -182,6 +189,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         builder.setSize(0);
         packetSize = builder.build().toByteArray().length;
         assert (packetSize > 0);
+
+        droneStatus = findViewById(R.id.droneStatus);
+        laserStatusButton = findViewById(R.id.laserStatus);
 
         updateUIState(); // Init
 
@@ -203,6 +213,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "pollJob exception: " + e);
+                System.exit(-1);
               }
             }
         };
@@ -215,6 +226,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "readPipelineJob exception: " + e);
+                System.exit(-1);
               }
             }
         };
@@ -227,16 +239,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "writePipelineJob exception: " + e);
+                System.exit(-1);
               }
             }
         };
         pollExecutor.scheduleAtFixedRate(pollRunnable, 0, 200, TimeUnit.MILLISECONDS);
         readPipelineExecutor.scheduleAtFixedRate(readPipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
         writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
-
-        if (mockDrone) {
-            setDroneState(Interconnection.drone_info.state_t.READY);
-        }
     }
 
     @Override
@@ -263,9 +272,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         disconnect();
     }
 
+    // UI thread
     private void setDroneState(Interconnection.drone_info.state_t newDroneState) {
         droneState = newDroneState;
-        handler.sendEmptyMessage(0);
+        updateUIState();
     }
 
     // UI thread
@@ -344,9 +354,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         }
                         synchronized (executeCommandsMutex) {
                             executeCommands.add(Interconnection.command_type.command_t.MISSION_START);
-                            if (mockDrone) {
-                                executeCommands.add(Interconnection.command_type.command_t.LASER_RANGE_RESPONSE);
-                            }
                         }
                     }
                 })
@@ -423,6 +430,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (removeInputPolygon) {
             inputPolygon.userRemove();
             missionPath.userRemove();
+            handler.sendEmptyMessage(0);
             return;
         }
 
@@ -444,6 +452,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         inputPolygon.add(point);
+        handler.sendEmptyMessage(0);
     }
 
     private void sleep(int seconds) {
@@ -481,10 +490,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (mockDrone) {
             // Paris
             homeLocation.set(new LocationCoordinate2D(48.847344150212244, 2.38680388210137));
-
-            droneLatitude = 48.8473;
-            droneLongitude = 2.3868;
-            droneHeading = 0.0F;
 
             updateState(State.ONLINE);
             return;
@@ -682,16 +687,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private byte[] readPipeData(int length) {
         byte[] buffer = new byte[length];
         while (true) {
-            if (!pipelineStatus.isConnected()) {
-                sleep(5);
-                continue;
+            int readResult = -1;
+            if (mockDrone) {
+                Log.d(TAG, "read mock data");
+                readResult = mockPipelineRead.readData(buffer, buffer.length);
             }
-            Pipeline pipe = pipeline();
-            if (pipe == null) {
-                return null;
+            else {
+                if (!pipelineStatus.isConnected()) {
+                    sleep(5);
+                    continue;
+                }
+                Pipeline pipe = pipeline();
+                if (pipe == null) {
+                    return null;
+                }
+                Log.d(TAG, "readData");
+                readResult = pipe.readData(buffer, 0, buffer.length);
             }
-            Log.d(TAG, "readData");
-            int readResult = pipe.readData(buffer, 0, buffer.length);
             if (readResult == -10008) {
                 // Timeout: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L22
                 continue;
@@ -744,10 +756,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
         try {
+            Log.d(TAG, "readPipelineJob: readSizeFromPipe");
             int buffer_size = readSizeFromPipe();
             if (buffer_size == 0) {
                 return;
             }
+            Log.d(TAG, "readPipelineJob: readPipeData");
             byte[] buffer = readPipeData(buffer_size);
             if (buffer == null) {
                 return;
@@ -809,7 +823,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
                     if (checkPath && missionPath.isEmpty()) {
                         Log.i(TAG, "State is PATH but mission path empty - emit cancel");
-                        setDroneState(Interconnection.drone_info.state_t.WAITING);
+                        droneState = Interconnection.drone_info.state_t.WAITING;
+                        handler.sendEmptyMessage(0);
                         synchronized (executeCommandsMutex) {
                             executeCommands.add(Interconnection.command_type.command_t.MISSION_PATH_CANCEL);
                         }
@@ -828,6 +843,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         } catch (InvalidProtocolBufferException e) {
             e.printStackTrace();
             Log.e(TAG, "Pipeline parse failed, invalid protocol");
+            System.exit(-1);
         }
     }
 
@@ -949,37 +965,70 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (!writeSizeToPipe(bytesToSend.length)) {
                     return false;
                 }
+                if (mockDrone) {
+                    mockPipelineRead.buildMission(inputPolygon, event_id);
+                }
                 return writePipeData(bytesToSend);
             }
             case MISSION_PATH_CANCEL:
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PATH_CANCEL)) {
                     return false;
                 }
-                return writeEventIdToPipe();
+                if (!writeEventIdToPipe()) {
+                    return false;
+                }
+                if (mockDrone) {
+                    mockPipelineRead.missionPathCancel(event_id);
+                }
+                return true;
             case MISSION_START: {
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
                     return false;
                 }
-                return writeEventIdToPipe();
+                if (!writeEventIdToPipe()) {
+                    return false;
+                }
+                if (mockDrone) {
+                    mockPipelineRead.missionStart(event_id);
+                }
+                return true;
             }
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE)) {
                     return false;
                 }
-                return writeEventIdToPipe();
+                if (!writeEventIdToPipe()) {
+                    return false;
+                }
+                if (mockDrone) {
+                    mockPipelineRead.missionPause(event_id);
+                }
+                return true;
             case MISSION_CONTINUE:
                 Log.i(TAG, "Execute command MISSION_CONTINUE");
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_CONTINUE)) {
                     return false;
                 }
-                return writeEventIdToPipe();
+                if (!writeEventIdToPipe()) {
+                    return false;
+                }
+                if (mockDrone) {
+                    mockPipelineRead.missionContinue(event_id);
+                }
+                return true;
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT)) {
                     return false;
                 }
-                return writeEventIdToPipe();
+                if (!writeEventIdToPipe()) {
+                    return false;
+                }
+                if (mockDrone) {
+                    mockPipelineRead.missionAbort(event_id);
+                }
+                return true;
             case LASER_RANGE_RESPONSE: {
                 if (!laserStatus.hasValue()) {
                     Log.i(TAG, "No laser data to send");
@@ -1006,48 +1055,46 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // UI thread
     private void updateUIState() {
-        MaterialButton droneStatus = findViewById(R.id.droneStatus);
         int buttonColor = getDroneButtonColor();
         droneStatus.setIconTintResource(buttonColor);
         droneStatus.setText(getDroneButtonText());
         droneStatus.setTextColor(getResources().getColor(buttonColor));
 
-        Button laserStatusButton = findViewById(R.id.laserStatus);
-        laserStatusButton.setText("Laser: " + (mockDrone ? "(mock)" : laserStatus.getLaserStatus()));
-
-        ImageButton cancelButton = findViewById(R.id.cancelButton);
-        Button actionButton = (Button) findViewById(R.id.actionButton);
+        laserStatusButton.setText("Laser: " + laserStatus.getLaserStatus());
 
         synchronized (droneCoordinatesAndStateMutex) {
             switch (droneState) {
                 case READY:
                     if (inputPolygon.isEmpty()) {
-                        cancelButton.setClickable(false);
+                        cancelButton.setVisibility(View.INVISIBLE);
                     } else {
-                        cancelButton.setClickable(true);
+                        cancelButton.setVisibility(View.VISIBLE);
                     }
                     actionButton.setText("Build");
-                    actionButton.setClickable(true);
+                    actionButton.setEnabled(true);
                     break;
                 case PATH_DATA:
                 case WAITING:
-                    cancelButton.setClickable(false);
-                    actionButton.setClickable(false);
+                    Log.d(TAG, "updateUIState: WAITING");
+                    cancelButton.setVisibility(View.INVISIBLE);
+                    actionButton.setText("Waiting...");
+                    actionButton.setEnabled(false);
                     break;
                 case PAUSED:
-                    cancelButton.setClickable(true);
+                    Log.d(TAG, "updateUIState: PAUSED");
+                    cancelButton.setVisibility(View.VISIBLE);
                     actionButton.setText("Continue");
-                    actionButton.setClickable(true);
+                    actionButton.setEnabled(true);
                     break;
                 case EXECUTING:
-                    cancelButton.setClickable(true);
+                    cancelButton.setVisibility(View.VISIBLE);
                     actionButton.setText("Pause");
-                    actionButton.setClickable(true);
+                    actionButton.setEnabled(true);
                     break;
                 case PATH:
-                    cancelButton.setClickable(true);
+                    cancelButton.setVisibility(View.VISIBLE);
                     actionButton.setText("Start");
-                    actionButton.setClickable(true);
+                    actionButton.setEnabled(true);
                     break;
                 default:
                     assert (false);
@@ -1294,6 +1341,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // UI thread
     private void updateDroneCoordinates() {
+        Log.d(TAG, "updateDroneCoordinates");
+
         if (gMap == null) {
             return;
         }
