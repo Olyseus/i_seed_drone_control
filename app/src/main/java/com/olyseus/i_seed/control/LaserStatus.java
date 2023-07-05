@@ -33,7 +33,7 @@ public class LaserStatus {
 
     public String getLaserStatus() {
         synchronized (mutex) {
-            return laserStatus;
+            return mockDrone ? "Sim" : laserStatus;
         }
     }
 
@@ -58,6 +58,7 @@ public class LaserStatus {
     }
 
     public void onUpdate(LaserError error, float targetDistance) {
+        assert(!mockDrone);
         synchronized (mutex) {
             if (error == LaserError.TOO_FAR) {
                 Log.d(TAG, "Laser is too far");
