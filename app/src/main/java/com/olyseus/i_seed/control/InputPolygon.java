@@ -137,4 +137,25 @@ public class InputPolygon {
             }
         }
     }
+
+    // UI thread
+    public List<LatLng> mockMissionPath() {
+        synchronized (mutex) {
+            assert(vertices.size() > 2);
+            double lat = 0.0;
+            double lon = 0.0;
+            for (LatLng v : vertices) {
+                lat = lat + v.latitude;
+                lon = lon + v.longitude;
+            }
+            lat = lat / vertices.size();
+            lon = lon / vertices.size();
+
+            List<LatLng> result = new ArrayList<LatLng>();
+            for (LatLng v : vertices) {
+                result.add(new LatLng((v.latitude + lat) / 2.0, (v.longitude + lon) / 2.0));
+            }
+            return result;
+        }
+    }
 }
