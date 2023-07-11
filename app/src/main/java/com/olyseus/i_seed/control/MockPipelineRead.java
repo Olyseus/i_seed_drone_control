@@ -82,8 +82,10 @@ public class MockPipelineRead {
         Interconnection.packet_size.Builder builder = Interconnection.packet_size.newBuilder();
         builder.setSize(packet.length);
         Log.d(TAG, "sendPacket: size packet #" + packets.size() + " (len: " + builder.build().toByteArray().length + ")");
+        assert(builder.build().toByteArray().length > 0);
         packets.add(builder.build().toByteArray());
         Log.d(TAG, "sendPacket: packet #" + packets.size() + " (len: " + packet.length + ")");
+        assert(packet.length > 0);
         packets.add(packet);
     }
 
@@ -118,6 +120,7 @@ public class MockPipelineRead {
     private void sendMissionPath(InputPolygon inputPolygon) {
         Log.d(TAG, "sendMissionPath");
         Interconnection.mission_path.Builder builder = Interconnection.mission_path.newBuilder();
+        builder.setReserved(0x0);
         missionPath = inputPolygon.mockMissionPath();
         for (LatLng w : missionPath) {
             Interconnection.coordinate.Builder c_builder = Interconnection.coordinate.newBuilder();

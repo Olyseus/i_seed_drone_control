@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private Object executeCommandsMutex = new Object();
     private List<Interconnection.command_type.command_t> executeCommands = new ArrayList<Interconnection.command_type.command_t>();
     private int packetSize = 0;
-    private static int protocolVersion = 16; // Keep it consistent with Onboard SDK
+    private static int protocolVersion = 17; // Keep it consistent with Onboard SDK
     private static int channelID = 9745; // Just a random number. Keep it consistent with Onboard SDK
     private Object droneCoordinatesAndStateMutex = new Object();
     private double droneLongitude = 0.0;
@@ -743,6 +743,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         assert(buffer != null);
 
         Interconnection.mission_path m_path = Interconnection.mission_path.parseFrom(buffer);
+        assert(m_path.getReserved() == 0x0);
         missionPath.load(m_path);
         if (missionPath.isEmpty()) {
             Log.w(TAG, "Loaded mission path is empty");

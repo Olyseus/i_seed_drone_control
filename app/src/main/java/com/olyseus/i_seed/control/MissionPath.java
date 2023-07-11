@@ -106,6 +106,7 @@ public class MissionPath {
 
     // read pipe thread
     public void load(Interconnection.mission_path path) {
+        assert(path.getReserved() == 0x0);
         synchronized (mutex) {
             redraw = true;
             vertices.clear();
