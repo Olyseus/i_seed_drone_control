@@ -27,6 +27,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.model.BitmapDescriptor;
@@ -77,6 +78,7 @@ import dji.mop.common.Pipeline;
 import dji.mop.common.TransmissionControlType;
 
 import interconnection.Interconnection;
+import com.olyseus.i_seed.control.BuildConfig;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapClickListener {
     private static final String TAG = "MainActivity";
@@ -193,6 +195,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         droneStatus = findViewById(R.id.droneStatus);
         laserStatusButton = findViewById(R.id.laserStatus);
+
+        TextView textLabel = findViewById(R.id.textVersion);
+        textLabel.setText(BuildConfig.VERSION_NAME);
 
         updateUIState(); // Init
 
