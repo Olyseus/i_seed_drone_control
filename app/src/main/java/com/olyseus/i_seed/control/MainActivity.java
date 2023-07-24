@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import dji.common.camera.LaserError;
@@ -113,7 +114,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     LaserStatus laserStatus = new LaserStatus(mockDrone);
     PipelineStatus pipelineStatus = new PipelineStatus();
     static private int invalid_event_id = -1;
-    private int event_id = invalid_event_id;
+    private AtomicInteger event_id = new AtomicInteger(invalid_event_id);
 
     enum State {
         NO_PERMISSIONS,
@@ -570,7 +571,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     assert(pipeline() != null);
                     pipelineStatus.setConnected(true);
                     waitForPongReceived = true;
-                    event_id = invalid_event_id;
+                    event_id.set(invalid_event_id);
                     synchronized (executeCommandsMutex) {
                         if (!executeCommands.contains(Interconnection.command_type.command_t.PING)) {
                             executeCommands.add(Interconnection.command_type.command_t.PING);
@@ -794,18 +795,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
                     Interconnection.drone_info d_info = Interconnection.drone_info.parseFrom(crdBuffer);
                     Log.d(TAG, "Drone coordinates and state received");
-                    if (event_id == invalid_event_id) {
-                        event_id = d_info.getEventId();
-                        assert(event_id != invalid_event_id);
-                        assert(event_id >= 0);
+                    if (event_id.get() == invalid_event_id) {
+                        event_id.set(d_info.getEventId());
+                        assert(event_id.get() != invalid_event_id);
+                        assert(event_id.get() >= 0);
                     }
                     boolean readMissionPath = false;
                     boolean checkPath = false;
-                    if (event_id > d_info.getEventId()) {
+                    if (event_id.get() > d_info.getEventId()) {
                         Log.d(TAG, "Ignore stale drone state");
-                        assert(event_id == d_info.getEventId() + 1);
+                        assert(event_id.get() == d_info.getEventId() + 1);
                     } else {
-                        assert(event_id == d_info.getEventId());
+                        assert(event_id.get() == d_info.getEventId());
                         synchronized (droneCoordinatesAndStateMutex) {
                             droneLatitude = d_info.getLatitude();
                             droneLongitude = d_info.getLongitude();
@@ -916,10 +917,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private boolean writeEventIdToPipe() {
-        assert(event_id != invalid_event_id);
-        event_id++;
+        assert(event_id.get() != invalid_event_id);
+        event_id.incrementAndGet();
         Interconnection.event_id_message.Builder builder = Interconnection.event_id_message.newBuilder();
-        builder.setEventId(event_id);
+        builder.setEventId(event_id.get());
         byte[] bytesToSend = builder.build().toByteArray();
         if (!writeSizeToPipe(bytesToSend.length)) {
             return false;
@@ -961,9 +962,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 home_builder.setLongitude(homeLocation.get().getLongitude());
 
                 Interconnection.input_polygon.Builder builder = Interconnection.input_polygon.newBuilder();
-                assert (event_id != invalid_event_id);
-                event_id++;
-                builder.setEventId(event_id);
+                assert (event_id.get() != invalid_event_id);
+                event_id.incrementAndGet();
+                builder.setEventId(event_id.get());
                 builder.setHome(home_builder.build());
                 inputPolygon.buildVertices(builder);
                 assert(builder.getVerticesCount() > 2);
@@ -972,7 +973,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.buildMission(inputPolygon, event_id);
+                    mockPipelineRead.buildMission(inputPolygon, event_id.get());
                 }
                 return writePipeData(bytesToSend);
             }
@@ -984,7 +985,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.missionPathCancel(event_id);
+                    mockPipelineRead.missionPathCancel(event_id.get());
                 }
                 return true;
             case MISSION_START: {
@@ -995,7 +996,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.missionStart(event_id);
+                    mockPipelineRead.missionStart(event_id.get());
                 }
                 return true;
             }
@@ -1008,7 +1009,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.missionPause(event_id);
+                    mockPipelineRead.missionPause(event_id.get());
                 }
                 return true;
             case MISSION_CONTINUE:
@@ -1020,7 +1021,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.missionContinue(event_id);
+                    mockPipelineRead.missionContinue(event_id.get());
                 }
                 return true;
             case MISSION_ABORT:
@@ -1032,7 +1033,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     return false;
                 }
                 if (mockDrone) {
-                    mockPipelineRead.missionAbort(event_id);
+                    mockPipelineRead.missionAbort(event_id.get());
                 }
                 return true;
             case LASER_RANGE_RESPONSE: {
