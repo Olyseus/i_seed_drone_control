@@ -1405,6 +1405,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         markerOptions.rotation(heading);
         markerOptions.anchor(0.5F, 0.5F);
         markerOptions.flat(true);
+        markerOptions.zIndex(6);
         droneMarker = gMap.addMarker(markerOptions);
         zoomToPosition(droneMarker.getPosition());
     }
@@ -1437,6 +1438,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             markerOptions.rotation(0.0F);
             markerOptions.anchor(0.5F, 0.5F);
             markerOptions.flat(true);
+            markerOptions.zIndex(5);
             homeMarker = gMap.addMarker(markerOptions);
             if (droneMarker == null) {
                 zoomToPosition(homeMarker.getPosition());

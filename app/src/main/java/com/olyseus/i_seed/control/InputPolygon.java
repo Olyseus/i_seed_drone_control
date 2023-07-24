@@ -47,10 +47,12 @@ public class InputPolygon {
 
         polyline = gMap.addPolyline(new PolylineOptions().clickable(false));
         polyline.setWidth(5.0F);
+        polyline.setZIndex(1);
 
         endLine = gMap.addPolyline(new PolylineOptions().clickable(false));
         endLine.setWidth(5.0F);
         endLine.setPattern(POLYGON_PATTERN);
+        endLine.setZIndex(1);
     }
 
     // UI thread

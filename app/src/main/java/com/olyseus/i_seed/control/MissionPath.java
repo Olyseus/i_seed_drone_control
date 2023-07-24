@@ -43,6 +43,7 @@ public class MissionPath {
         polyline = gMap.addPolyline(new PolylineOptions().clickable(false));
         polyline.setWidth(5.0F);
         polyline.setColor(Color.RED);
+        polyline.setZIndex(3);
     }
 
     // UI thread
