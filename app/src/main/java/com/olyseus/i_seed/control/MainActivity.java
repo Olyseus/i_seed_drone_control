@@ -16,7 +16,6 @@ import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,7 +29,6 @@ import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.Dash;
 import com.google.android.gms.maps.model.Gap;
@@ -38,8 +36,6 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PatternItem;
-import com.google.android.gms.maps.model.Polyline;
-import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -78,14 +74,13 @@ import dji.mop.common.Pipeline;
 import dji.mop.common.TransmissionControlType;
 
 import interconnection.Interconnection;
-import com.olyseus.i_seed.control.BuildConfig;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapClickListener {
     private static final String TAG = "MainActivity";
     private GoogleMap gMap;
     private ScheduledExecutorService pollExecutor;
-    private ScheduledExecutorService readPipelineExecutor;
-    private ScheduledExecutorService writePipelineExecutor;
+    private ScheduledExecutorService readDataExecutor;
+    private ScheduledExecutorService writeDataExecutor;
     private Handler handler;
     private boolean sdkRegistrationStarted = false;
     private static boolean useBridge = false;
@@ -208,8 +203,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         checkAndRequestPermissions();
 
         pollExecutor = Executors.newSingleThreadScheduledExecutor();
-        readPipelineExecutor = Executors.newSingleThreadScheduledExecutor();
-        writePipelineExecutor = Executors.newSingleThreadScheduledExecutor();
+        readDataExecutor = Executors.newSingleThreadScheduledExecutor();
+        writeDataExecutor = Executors.newSingleThreadScheduledExecutor();
 
         Runnable pollRunnable = new Runnable() {
             @Override public void run() {
@@ -223,28 +218,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               }
             }
         };
-        Runnable readPipelineRunnable = new Runnable() {
+        Runnable readDataRunnable = new Runnable() {
             @Override
             public void run() {
               try {
-                readPipelineJob();
+                readDataJob();
               }
               catch (Throwable e) {
                 e.printStackTrace();
-                Log.e(TAG, "readPipelineJob exception: " + e);
+                Log.e(TAG, "readDataJob exception: " + e);
                 System.exit(-1);
               }
             }
         };
-        Runnable writePipelineRunnable = new Runnable() {
+        Runnable writeDataRunnable = new Runnable() {
             @Override
             public void run() {
               try {
-                writePipelineJob();
+                writeDataJob();
               }
               catch (Throwable e) {
                 e.printStackTrace();
-                Log.e(TAG, "writePipelineJob exception: " + e);
+                Log.e(TAG, "writeDataJob exception: " + e);
                 System.exit(-1);
               }
             }
@@ -253,8 +248,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // Note: each runnable will not execute concurrently
         // https://docs.oracle.com/javase/6/docs/api/java/util/concurrent/ScheduledExecutorService.html#scheduleAtFixedRate(java.lang.Runnable,%20long,%20long,%20java.util.concurrent.TimeUnit)
         pollExecutor.scheduleAtFixedRate(pollRunnable, 0, 200, TimeUnit.MILLISECONDS);
-        readPipelineExecutor.scheduleAtFixedRate(readPipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
-        writePipelineExecutor.scheduleAtFixedRate(writePipelineRunnable, 0, 200, TimeUnit.MILLISECONDS);
+        readDataExecutor.scheduleAtFixedRate(readDataRunnable, 0, 200, TimeUnit.MILLISECONDS);
+        writeDataExecutor.scheduleAtFixedRate(writeDataRunnable, 0, 200, TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -776,18 +771,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // read pipe thread
-    private void readPipelineJob() {
+    private void readDataJob() {
         if (appOnPause) {
             return;
         }
 
         try {
-            Log.d(TAG, "readPipelineJob: readSizeFromPipe");
+            Log.d(TAG, "readDataJob: readSizeFromPipe");
             int buffer_size = readSizeFromPipe();
             if (buffer_size == 0) {
                 return;
             }
-            Log.d(TAG, "readPipelineJob: readData");
+            Log.d(TAG, "readDataJob: readData");
             byte[] buffer = readData(buffer_size);
             if (buffer == null) {
                 return;
@@ -874,7 +869,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // write pipe thread
-    private void writePipelineJob() {
+    private void writeDataJob() {
         if (appOnPause) {
             return;
         }
