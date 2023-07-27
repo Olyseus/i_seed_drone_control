@@ -709,7 +709,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // read pipe thread
-    private byte[] readPipeData(int length) {
+    private byte[] readData(int length) {
         byte[] buffer = new byte[length];
         while (true) {
             int readResult = -1;
@@ -751,7 +751,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private int readSizeFromPipe() throws InvalidProtocolBufferException {
-        byte[] buffer = readPipeData(packetSize);
+        byte[] buffer = readData(packetSize);
         if (buffer == null) {
             return 0;
         }
@@ -764,7 +764,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         int buffer_size = readSizeFromPipe();
         assert(buffer_size > 0);
 
-        byte[] buffer = readPipeData(buffer_size);
+        byte[] buffer = readData(buffer_size);
         assert(buffer != null);
 
         Interconnection.mission_path m_path = Interconnection.mission_path.parseFrom(buffer);
@@ -787,8 +787,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (buffer_size == 0) {
                 return;
             }
-            Log.d(TAG, "readPipelineJob: readPipeData");
-            byte[] buffer = readPipeData(buffer_size);
+            Log.d(TAG, "readPipelineJob: readData");
+            byte[] buffer = readData(buffer_size);
             if (buffer == null) {
                 return;
             }
@@ -813,7 +813,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if (buffer_size == 0) {
                         return;
                     }
-                    byte[] crdBuffer = readPipeData(buffer_size);
+                    byte[] crdBuffer = readData(buffer_size);
                     if (crdBuffer == null) {
                         return;
                     }
@@ -906,7 +906,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private boolean writePipeData(byte[] bytesToSend) {
+    private boolean writeData(byte[] bytesToSend) {
         if (mockDrone) {
             return true;
         }
@@ -947,7 +947,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (!writeSizeToPipe(bytesToSend.length)) {
             return false;
         }
-        return writePipeData(bytesToSend);
+        return writeData(bytesToSend);
     }
 
     private boolean writeCommandToPipe(Interconnection.command_type.command_t command) {
@@ -958,7 +958,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (!writeSizeToPipe(bytesToSend.length)) {
             return false;
         }
-        return writePipeData(bytesToSend);
+        return writeData(bytesToSend);
     }
 
     private boolean writeSizeToPipe(int size) {
@@ -966,7 +966,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         builder.setSize(size);
         byte[] bytesToSend = builder.build().toByteArray();
         assert(bytesToSend.length == packetSize);
-        return writePipeData(bytesToSend);
+        return writeData(bytesToSend);
     }
 
     // write pipe thread
@@ -995,7 +995,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (mockDrone) {
                     mockPipelineRead.buildMission(inputPolygon, currentEventId());
                 }
-                return writePipeData(bytesToSend);
+                return writeData(bytesToSend);
             }
             case MISSION_PATH_CANCEL:
                 if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PATH_CANCEL)) {
@@ -1072,7 +1072,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if (!writeSizeToPipe(bytesToSend.length)) {
                     return false;
                 }
-                return writePipeData(bytesToSend);
+                return writeData(bytesToSend);
             }
             default:
                 assert(false);
