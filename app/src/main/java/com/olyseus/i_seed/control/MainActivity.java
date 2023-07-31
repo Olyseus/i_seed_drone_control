@@ -287,6 +287,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // UI thread
+    // Always under 'droneCoordinatesAndStateMutex'
     private void setDroneState(Interconnection.drone_info.state_t newDroneState) {
         droneState = newDroneState;
         updateUIState();
@@ -854,7 +855,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if (checkPath && missionPath.isEmpty()) {
                         Log.i(TAG, "State is PATH but mission path empty - emit cancel");
                         incrementEventId();
-                        droneState = Interconnection.drone_info.state_t.WAITING;
+                        synchronized (droneCoordinatesAndStateMutex) {
+                            droneState = Interconnection.drone_info.state_t.WAITING;
+                        }
                         handler.sendEmptyMessage(0);
                         synchronized (executeCommandsMutex) {
                             executeCommands.add(Interconnection.command_type.command_t.MISSION_PATH_CANCEL);
