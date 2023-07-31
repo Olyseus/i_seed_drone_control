@@ -113,6 +113,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     static private int invalid_event_id = -1;
     private AtomicInteger event_id = new AtomicInteger(invalid_event_id);
 
+    private class PipelineClosed extends Exception {};
+
     enum State {
         NO_PERMISSIONS,
         MAP_NOT_READY,
@@ -224,6 +226,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               try {
                 readDataJob();
               }
+              catch (PipelineClosed e) {
+                Log.e(TAG, "readDataRunnable pipeline closed");
+                disconnect();
+              }
               catch (Throwable e) {
                 e.printStackTrace();
                 Log.e(TAG, "readDataJob exception: " + e);
@@ -236,6 +242,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void run() {
               try {
                 writeDataJob();
+              }
+              catch (PipelineClosed e) {
+                  Log.e(TAG, "writeDataRunnable pipeline closed");
+                  disconnect();
               }
               catch (Throwable e) {
                 e.printStackTrace();
@@ -592,9 +602,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     waitForPongReceived = true;
                     event_id.set(invalid_event_id);
                     synchronized (executeCommandsMutex) {
-                        if (!executeCommands.contains(Interconnection.command_type.command_t.PING)) {
-                            executeCommands.add(Interconnection.command_type.command_t.PING);
-                        }
+                        executeCommands.clear();
+                        executeCommands.add(Interconnection.command_type.command_t.PING);
                     }
                     return;
                 }
@@ -655,6 +664,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // read pipe thread
     // write pipe thread
     private void disconnect() {
+        synchronized (executeCommandsMutex) {
+            Log.i(TAG, "Clear queue on disconnect");
+            executeCommands.clear();
+        }
+
+        synchronized (droneCoordinatesAndStateMutex) {
+            Log.i(TAG, "Set WAITING state for disconnection");
+            droneState = Interconnection.drone_info.state_t.WAITING;
+            handler.sendEmptyMessage(0);
+        }
+
         if (pipelineStatus.isDisconnectionInProgress()) {
             return;
         }
@@ -704,7 +724,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // read pipe thread
-    private byte[] readData(int length) {
+    private byte[] readData(int length) throws PipelineClosed {
         byte[] buffer = new byte[length];
         while (true) {
             int readResult = -1;
@@ -719,7 +739,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
                 Pipeline pipe = pipeline();
                 if (pipe == null) {
-                    return null;
+                    throw new PipelineClosed();
                 }
                 Log.d(TAG, "readData");
                 readResult = pipe.readData(buffer, 0, buffer.length);
@@ -731,31 +751,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (readResult == -10011) {
                 // Connection closed:
                 // https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
-                disconnect();
-                return null;
+                throw new PipelineClosed();
             }
-            if (readResult <= 0) {
-                Log.e(TAG, "Read pipeline error: " + readResult);
-                return null;
+            if (readResult > 0) {
+                assert(readResult == buffer.length);
+                return buffer;
             }
-            assert(readResult == buffer.length);
-            break;
-        }
 
-        return buffer;
+            Log.e(TAG, "Read pipeline error: " + readResult);
+            System.exit(-1);
+        }
     }
 
-    private int readSizeFromPipe() throws InvalidProtocolBufferException {
+    private int readSizeFromPipe() throws InvalidProtocolBufferException, PipelineClosed {
         byte[] buffer = readData(packetSize);
-        if (buffer == null) {
-            return 0;
-        }
+        assert(buffer != null);
         Interconnection.packet_size p_size = Interconnection.packet_size.parseFrom(buffer);
         return p_size.getSize();
     }
 
     // read pipe thread
-    private void readMissionPathFromPipe() throws InvalidProtocolBufferException {
+    private void readMissionPathFromPipe() throws InvalidProtocolBufferException, PipelineClosed {
         int buffer_size = readSizeFromPipe();
         assert(buffer_size > 0);
 
@@ -771,7 +787,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // read pipe thread
-    private void readDataJob() {
+    private void readDataJob() throws PipelineClosed {
         if (appOnPause) {
             return;
         }
@@ -779,14 +795,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         try {
             Log.d(TAG, "readDataJob: readSizeFromPipe");
             int buffer_size = readSizeFromPipe();
-            if (buffer_size == 0) {
-                return;
-            }
+            assert(buffer_size > 0);
+
             Log.d(TAG, "readDataJob: readData");
             byte[] buffer = readData(buffer_size);
-            if (buffer == null) {
-                return;
-            }
+            assert(buffer != null);
 
             Interconnection.command_type command = Interconnection.command_type.parseFrom(buffer);
             if (command.getVersion() != protocolVersion) {
@@ -805,13 +818,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     break;
                 case DRONE_INFO:
                     buffer_size = readSizeFromPipe();
-                    if (buffer_size == 0) {
-                        return;
-                    }
+                    assert(buffer_size > 0);
+
                     byte[] crdBuffer = readData(buffer_size);
-                    if (crdBuffer == null) {
-                        return;
-                    }
+                    assert(crdBuffer != null);
                     Interconnection.drone_info d_info = Interconnection.drone_info.parseFrom(crdBuffer);
                     Log.d(TAG, "Drone coordinates and state received");
                     if (event_id.get() == invalid_event_id) {
@@ -869,7 +879,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // write pipe thread
-    private void writeDataJob() {
+    private void writeDataJob() throws PipelineClosed {
         if (appOnPause) {
             return;
         }
@@ -890,20 +900,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
                 executeCommand = executeCommands.get(0);
             }
-            if (executeCommand(executeCommand)) {
-                synchronized (executeCommandsMutex) {
-                    executeCommands.remove(0);
-                }
-            }
-            else {
-                break;
+            executeCommand(executeCommand);
+            synchronized (executeCommandsMutex) {
+                executeCommands.remove(0);
             }
         }
     }
 
-    private boolean writeData(byte[] bytesToSend) {
+    private void writeData(byte[] bytesToSend) throws PipelineClosed {
+        assert(bytesToSend.length > 0);
         if (mockDrone) {
-            return true;
+            return;
         }
         while (true) {
             if (!pipelineStatus.isConnected()) {
@@ -912,7 +919,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             Pipeline pipe = pipeline();
             if (pipe == null) {
-                return false;
+                throw new PipelineClosed();
             }
             int writeResult = pipe.writeData(bytesToSend, 0, bytesToSend.length);
             if (writeResult == -10008) {
@@ -923,57 +930,52 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (writeResult == -10011) {
                 // Connection closed: https://github.com/dji-sdk/Onboard-SDK/blob/4.1.0/osdk-core/linker/armv8/inc/mop.h#L25
                 Log.e(TAG, "Write failed, connection closed");
-                disconnect();
-                return false;
+                throw new PipelineClosed();
             }
             if (writeResult > 0) {
                 assert (writeResult == bytesToSend.length);
-                return true;
+                return;
             }
             Log.e(TAG, "Write failed: " + writeResult);
-            return false;
+            System.exit(-1);
         }
     }
 
-    private boolean writeEventIdToPipe() {
+    private void writeEventIdToPipe() throws PipelineClosed {
         Interconnection.event_id_message.Builder builder = Interconnection.event_id_message.newBuilder();
         builder.setEventId(currentEventId());
         byte[] bytesToSend = builder.build().toByteArray();
-        if (!writeSizeToPipe(bytesToSend.length)) {
-            return false;
-        }
-        return writeData(bytesToSend);
+        writeSizeToPipe(bytesToSend.length);
+        writeData(bytesToSend);
     }
 
-    private boolean writeCommandToPipe(Interconnection.command_type.command_t command) {
+    private void writeCommandToPipe(Interconnection.command_type.command_t command) throws PipelineClosed {
         Interconnection.command_type.Builder builder = Interconnection.command_type.newBuilder();
         builder.setVersion(protocolVersion);
         builder.setType(command);
         byte[] bytesToSend = builder.build().toByteArray();
-        if (!writeSizeToPipe(bytesToSend.length)) {
-            return false;
-        }
-        return writeData(bytesToSend);
+        writeSizeToPipe(bytesToSend.length);
+        writeData(bytesToSend);
     }
 
-    private boolean writeSizeToPipe(int size) {
+    private void writeSizeToPipe(int size) throws PipelineClosed {
         Interconnection.packet_size.Builder builder = Interconnection.packet_size.newBuilder();
         builder.setSize(size);
         byte[] bytesToSend = builder.build().toByteArray();
         assert(bytesToSend.length == packetSize);
-        return writeData(bytesToSend);
+        writeData(bytesToSend);
     }
 
     // write pipe thread
-    private boolean executeCommand(Interconnection.command_type.command_t command) {
+    private void executeCommand(Interconnection.command_type.command_t command) throws PipelineClosed {
+        writeCommandToPipe(command);
+
         switch (command) {
             case PING:
                 Log.i(TAG, "Execute command PING");
-                return writeCommandToPipe(Interconnection.command_type.command_t.PING);
+                return;
             case BUILD_MISSION: {
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.BUILD_MISSION)) {
-                    return false;
-                }
+                Log.i(TAG, "Execute command BUILD_MISSION");
                 Interconnection.coordinate.Builder home_builder = Interconnection.coordinate.newBuilder();
                 home_builder.setLatitude(homeLocation.get().getLatitude());
                 home_builder.setLongitude(homeLocation.get().getLongitude());
@@ -984,95 +986,65 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 inputPolygon.buildVertices(builder);
                 assert(builder.getVerticesCount() > 2);
                 byte[] bytesToSend = builder.build().toByteArray();
-                if (!writeSizeToPipe(bytesToSend.length)) {
-                    return false;
-                }
+                writeSizeToPipe(bytesToSend.length);
                 if (mockDrone) {
                     mockPipelineRead.buildMission(inputPolygon, currentEventId());
                 }
-                return writeData(bytesToSend);
+                writeData(bytesToSend);
+                return;
             }
             case MISSION_PATH_CANCEL:
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PATH_CANCEL)) {
-                    return false;
-                }
-                if (!writeEventIdToPipe()) {
-                    return false;
-                }
+                Log.i(TAG, "Execute command MISSION_PATH_CANCEL");
+                writeEventIdToPipe();
                 if (mockDrone) {
                     mockPipelineRead.missionPathCancel(currentEventId());
                 }
-                return true;
-            case MISSION_START: {
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_START)) {
-                    return false;
-                }
-                if (!writeEventIdToPipe()) {
-                    return false;
-                }
+                return;
+            case MISSION_START:
+                Log.i(TAG, "Execute command MISSION_START");
+                writeEventIdToPipe();
                 if (mockDrone) {
                     mockPipelineRead.missionStart(currentEventId());
                 }
-                return true;
-            }
+                return;
             case MISSION_PAUSE:
                 Log.i(TAG, "Execute command MISSION_PAUSE");
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_PAUSE)) {
-                    return false;
-                }
-                if (!writeEventIdToPipe()) {
-                    return false;
-                }
+                writeEventIdToPipe();
                 if (mockDrone) {
                     mockPipelineRead.missionPause(currentEventId());
                 }
-                return true;
+                return;
             case MISSION_CONTINUE:
                 Log.i(TAG, "Execute command MISSION_CONTINUE");
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_CONTINUE)) {
-                    return false;
-                }
-                if (!writeEventIdToPipe()) {
-                    return false;
-                }
+                writeEventIdToPipe();
                 if (mockDrone) {
                     mockPipelineRead.missionContinue(currentEventId());
                 }
-                return true;
+                return;
             case MISSION_ABORT:
                 Log.i(TAG, "Execute command MISSION_ABORT");
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.MISSION_ABORT)) {
-                    return false;
-                }
-                if (!writeEventIdToPipe()) {
-                    return false;
-                }
+                writeEventIdToPipe();
                 if (mockDrone) {
                     mockPipelineRead.missionAbort(currentEventId());
                 }
-                return true;
+                return;
             case LASER_RANGE_RESPONSE: {
-                if (!laserStatus.hasValue()) {
-                    Log.i(TAG, "No laser data to send");
-                    return false;
+                while (!laserStatus.hasValue()) {
+                    Log.i(TAG, "No laser data to send, waiting...");
+                    sleep(1);
                 }
                 float laserRange = laserStatus.getValue();
                 Log.i(TAG, "Sending laser range: " + laserRange);
-                if (!writeCommandToPipe(Interconnection.command_type.command_t.LASER_RANGE_RESPONSE)) {
-                    return false;
-                }
                 Interconnection.laser_range.Builder builder = Interconnection.laser_range.newBuilder();
                 builder.setRange(laserRange);
                 byte[] bytesToSend = builder.build().toByteArray();
-                if (!writeSizeToPipe(bytesToSend.length)) {
-                    return false;
-                }
-                return writeData(bytesToSend);
+                writeSizeToPipe(bytesToSend.length);
+                writeData(bytesToSend);
+                return;
             }
             default:
                 assert(false);
         }
-        return true;
     }
 
     // UI thread
