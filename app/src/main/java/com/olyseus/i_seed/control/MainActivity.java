@@ -485,9 +485,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         handler.sendEmptyMessage(0);
     }
 
-    private void sleep(int seconds) {
+    private void sleepMs(int milliseconds) {
         try {
-            TimeUnit.SECONDS.sleep(seconds);
+            TimeUnit.MILLISECONDS.sleep(milliseconds);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -557,7 +557,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (remoteController == null) {
                 updateState(State.WAIT_RC);
                 Log.e(TAG, "No remote controller, sleep 5 seconds");
-                sleep(5);
+                sleepMs(5000);
                 return;
             }
 
@@ -610,16 +610,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 pipelineStatus.setConnected(false);
                 if (error == PipelineError.NOT_READY) {
                     Log.e(TAG, "Interconnection failed, sleep 5 second");
-                    sleep(5);
+                    sleepMs(5000);
                 } else if (error == PipelineError.CONNECTION_REFUSED) {
                     Log.e(TAG, "Onboard not started, sleep 5 seconds");
                     showToast("No onboard connection");
-                    sleep(5);
+                    sleepMs(5000);
                 } else if (error == PipelineError.INVALID_PARAMETERS) {
                     // Can be received when Onboard SDK stopped and started again
                 } else if (error == PipelineError.TIMEOUT) {
                     Log.e(TAG, "Interconnection failed by timeout, sleep 5 seconds");
-                    sleep(5);
+                    sleepMs(5000);
                 } else {
                     Log.e(TAG, "Interconnection error: " + error.toString());
                 }
@@ -734,7 +734,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             else {
                 if (!pipelineStatus.isConnected()) {
-                    sleep(5);
+                    sleepMs(5000);
                     continue;
                 }
                 Pipeline pipe = pipeline();
@@ -914,7 +914,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         while (true) {
             if (!pipelineStatus.isConnected()) {
-                sleep(5);
+                sleepMs(5000);
                 continue;
             }
             Pipeline pipe = pipeline();
@@ -1031,7 +1031,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             case LASER_RANGE_RESPONSE: {
                 while (!laserStatus.hasValue()) {
                     Log.i(TAG, "No laser data to send, waiting...");
-                    sleep(1);
+                    sleepMs(300);
                 }
                 float laserRange = laserStatus.getValue();
                 Log.i(TAG, "Sending laser range: " + laserRange);
