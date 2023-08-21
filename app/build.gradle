@@ -13,12 +13,12 @@ def keystoreProperties = new Properties()
 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 android {
-    compileSdk 32
+    compileSdk 33
 
     defaultConfig {
         applicationId "com.olyseus.i_seed.control"
         minSdk 21 // DJI SDK 4.16.1 requirement
-        targetSdk 32
+        targetSdk 33
         versionCode 9
         versionName "9.0"
         setProperty("archivesBaseName", "drone-${versionName}")
