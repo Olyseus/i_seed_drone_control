@@ -19,8 +19,8 @@ android {
         applicationId "com.olyseus.i_seed.control"
         minSdk 21 // DJI SDK 4.16.1 requirement
         targetSdk 33
-        versionCode 9
-        versionName "9.0"
+        versionCode 10
+        versionName "10.0"
         setProperty("archivesBaseName", "drone-${versionName}")
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
